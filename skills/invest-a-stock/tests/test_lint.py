@@ -418,3 +418,69 @@ class TestFilenameFormatLint:
         filename_findings = [f for f in findings if f.rule_id.startswith("filename-format-")]
         assert len(filename_findings) == 1
         assert filename_findings[0].rule_id == "filename-format-datetime"
+
+
+class TestP3CostAnchorGuardrail:
+    """P-3（v0.2.9）：成本锚定护栏——账户历史字段不得作为决策理由。
+
+    设计依据：p-domain-behavioral-foundations-2026-09-05.md §7（L0 词面/L1 理由连接）。
+    """
+
+    _POS = [
+        ("回到成本就卖", "p3-cost-anchor-l0"),
+        ("等回本再说", "p3-cost-anchor-l0"),
+        ("赚够了走人", "p3-cost-anchor-threshold"),
+    ]
+
+    _NEG = [
+        "当前价格高于买入成本分布区间",      # 成本分布 = 筹码结构事实
+        "若盈利路径不及预期、估值回到周期中枢",  # 估值中枢 ≠ 回本
+        "该策略的成本优势来自规模效应",        # 无关语境
+        "跌破均线后按计划止损",              # 市场结构参考点（白名单语义）
+    ]
+
+    def test_p3_positive_lines(self, tmp_path):
+        from lib import lint as lint_mod
+
+        for text, rule_id in self._POS:
+            report = tmp_path / "report.md"
+            report.write_text(f"# t\n\n{text}\n", encoding="utf-8")
+            lint_mod._RULES_CACHE = None
+            findings = lint_mod.lint_file(report)
+            lint_mod._RULES_CACHE = None
+            assert any(f.rule_id == rule_id for f in findings), f"应命中 {rule_id}: {text}"
+
+    def test_p3_negative_lines(self, tmp_path):
+        from lib import lint as lint_mod
+
+        for text in self._NEG:
+            report = tmp_path / "report.md"
+            report.write_text(f"# t\n\n{text}\n", encoding="utf-8")
+            lint_mod._RULES_CACHE = None
+            findings = lint_mod.lint_file(report)
+            lint_mod._RULES_CACHE = None
+            p3 = [f for f in findings if f.rule_id.startswith("p3-")]
+            assert not p3, f"不应命中 P-3: {text} → {[f.context for f in p3]}"
+
+    def test_p3_l1_reason_connector_paragraph(self, tmp_path):
+        """L1 理由连接层：段内『账户历史字段 → 动作词』共现 → warning。"""
+        from lib import lint as lint_mod
+
+        report = tmp_path / "report.md"
+        report.write_text("亏损超过两成就止损\n", encoding="utf-8")
+        lint_mod._RULES_CACHE = None
+        findings = lint_mod.lint_file(report)
+        lint_mod._RULES_CACHE = None
+        assert any(f.rule_id == "p3-account-history-action" for f in findings)
+
+    def test_p3_meta_mention_not_self_triggered(self, tmp_path):
+        """规则元叙述（'禁止使用'回本''句式）不自触发（同 wording 规则 skip 惯例）。"""
+        from lib import lint as lint_mod
+
+        report = tmp_path / "report.md"
+        report.write_text("风险提示：文中禁止使用'回本'一词。\n", encoding="utf-8")
+        lint_mod._RULES_CACHE = None
+        findings = lint_mod.lint_file(report)
+        lint_mod._RULES_CACHE = None
+        p3 = [f for f in findings if f.rule_id.startswith("p3-")]
+        assert not p3, f"元叙述不应命中 P-3: {[f.context for f in p3]}"
