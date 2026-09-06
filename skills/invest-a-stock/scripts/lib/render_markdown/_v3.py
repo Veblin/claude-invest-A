@@ -3443,7 +3443,7 @@ def _section_4d_valuation_expectation(
         else:
             risk_free = risk_free_raw / 100.0
         from lib.valuation import implied_growth
-        ig = implied_growth(ctx.current_pe, risk_free, erp=0.06)
+        ig = implied_growth(ctx.current_pe, risk_free, erp=0.06, sensitivity=True)
         if ig.get("g_implied") is not None:
             lines.append(f"- 当前 PE(TTM)：**{ig['pe']}x**")
             # F0-5 配套：y10_source 已含 FRED.DGS10 前缀时不再拼接（旧逻辑
@@ -3462,6 +3462,11 @@ def _section_4d_valuation_expectation(
             lines.append(f"- ERP 假设：**6%**（保守基准）")
             lines.append(f"- 折现率 r：**{ig['r'] * 100:.2f}%**" if ig.get("r") else "- 折现率：不可得")
             lines.append(f"- **市场隐含增长率 g_implied：约 {ig['g_implied'] * 100:.2f}%**")
+            lines.append(
+                f"- g_implied 敏感性带（r±1pp）：{ig['g_band_down'] * 100:.2f}% ~ "
+                f"{ig['g_band_up'] * 100:.2f}%（对应 r={ig['r'] * 100:.2f}% ±1pp，"
+                f"r 口径 = 10Y {rf_label} + ERP {ig['erp'] * 100:.0f}%）"
+            )
             lines.append("")
             cagr_text = f"{ctx.cagr:+.2f}%" if ctx.cagr is not None else "不可得"
             cagr_years_label = f"{ctx.cagr_years_span:.1f}" if ctx.cagr_years_span is not None else "?"
