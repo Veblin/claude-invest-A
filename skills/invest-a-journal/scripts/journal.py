@@ -35,6 +35,41 @@ from db import (  # noqa: E402
 # helpers
 # ---------------------------------------------------------------------------
 
+# P-2（v0.2.9）：持仓位置导航参考——三隔离 if-then 框架（非操作建议，LAW 6/6a）
+# 设计依据：host-docs/v0.2.9/deep-research/00-research-summary-2026-09-06.md §2-P
+_NAV_FRAMEWORK = """### 导航参考（决策权在用户，LAW 6/6a）
+| 位置状态 | 结构状态 | 提示（框架性，非建议） |
+|---|---|---|
+| 浮盈厚 + 结构完好 | → 若考虑退出：先跑卖出评估四问（参考点独立性核对优先） |
+| 深亏/浅亏 | → 先做假设检查（错误条件 diff），不等回本（P-3） |
+| 任意位置 + thesis 超期 | → thesis --update（论文是否成立，与盈亏无关） |
+| 任意位置 + 结构失效触发 | → 执行错误条件纪律（LAW 6a，与位置无关的独立依据） |
+
+> 唯一合法使用账户位置的通道：权重/风险预算、红利税持股期、维保比例、市场结构止损（可独立复算）。
+> 除此之外：决策理由删去账户历史字段后若不再成立，即为成本锚定伪装。"""
+
+
+def _print_position_nav(symbol: str, holdings_path: str) -> None:
+    """P-2 持仓位置导航参考：位置卡（纯状态）+ if-then 框架（非操作建议）。"""
+    from lib.positions import build_position_rows_from_holdings, position_table
+
+    try:
+        data = json.loads(Path(holdings_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        print(f"⚠️ holdings.json 读取失败，跳过位置导航参考：{exc}")
+        return
+    if not isinstance(data, list):
+        print("⚠️ holdings.json 须为数组，跳过位置导航参考")
+        return
+    match = next((h for h in data if str(h.get("symbol", "")).strip() == symbol), None)
+    if match is None:
+        print("⚠️ 该标的不在 holdings.json，跳过位置导航参考")
+        return
+    print("\n## 持仓位置导航参考（三隔离 · if-then 框架 · 非操作建议）\n")
+    print(position_table(build_position_rows_from_holdings([match])))
+    print(_NAV_FRAMEWORK)
+
+
 def _prompt(label: str, default: str = "") -> str:
     suffix = f" [{default}]" if default else ""
     try:
@@ -72,7 +107,7 @@ def cmd_list(limit: int = 20) -> int:
     return 0
 
 
-def cmd_show(journal_id: int) -> int:
+def cmd_show(journal_id: int, portfolio: str | None = None) -> int:
     e = get_journal(journal_id)
     if not e:
         print(f"日志 #{journal_id} 不存在。")
@@ -140,6 +175,9 @@ def cmd_show(journal_id: int) -> int:
                     print(f"  {name}: {level}")
 
     print(f"\n  创建时间:   {e.get('created_at', '')}")
+
+    if portfolio:
+        _print_position_nav(str(e.get("symbol", "")), portfolio)
     return 0
 
 
@@ -204,6 +242,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_show = sub.add_parser("show", help="显示日志详情")
     p_show.add_argument("id", type=int)
+    p_show.add_argument(
+        "--portfolio", metavar="PATH",
+        help="holdings.json 路径：渲染持仓位置导航参考（P-2 三隔离，纯状态无建议）",
+    )
 
     p_del = sub.add_parser("delete", help="删除日志")
     p_del.add_argument("id", type=int)
@@ -229,7 +271,7 @@ def main() -> int:
             return cmd_stats()
         return cmd_list(args.limit)
     elif args.action == "show":
-        return cmd_show(args.id)
+        return cmd_show(args.id, portfolio=getattr(args, "portfolio", None))
     elif args.action == "delete":
         return cmd_delete(args.id)
     elif args.action == "stats":
