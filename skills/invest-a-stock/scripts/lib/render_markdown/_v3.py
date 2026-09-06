@@ -3462,11 +3462,15 @@ def _section_4d_valuation_expectation(
             lines.append(f"- ERP 假设：**6%**（保守基准）")
             lines.append(f"- 折现率 r：**{ig['r'] * 100:.2f}%**" if ig.get("r") else "- 折现率：不可得")
             lines.append(f"- **市场隐含增长率 g_implied：约 {ig['g_implied'] * 100:.2f}%**")
-            lines.append(
-                f"- g_implied 敏感性带（r±1pp）：{ig['g_band_down'] * 100:.2f}% ~ "
-                f"{ig['g_band_up'] * 100:.2f}%（对应 r={ig['r'] * 100:.2f}% ±1pp，"
-                f"r 口径 = 10Y {rf_label} + ERP {ig['erp'] * 100:.0f}%）"
-            )
+            # V-2 r±1pp 带（code-review max F14）：r 为默认猜测值（FRED/akshare 不可得，
+            # risk_free=0.025 兜底）时不渲染精确带——带围绕猜测中心、宽度恒 ±1pp 是固定
+            # 偏移而非真实敏感性，猜测偏差 >1pp 时真实 g 在带外，渲染会造成"实测精度"假象
+            if not risk_free_is_default:
+                lines.append(
+                    f"- g_implied 敏感性带（r±1pp）：{ig['g_band_down'] * 100:.2f}% ~ "
+                    f"{ig['g_band_up'] * 100:.2f}%（对应 r={ig['r'] * 100:.2f}% ±1pp，"
+                    f"r 口径 = 10Y {rf_label} + ERP {ig['erp'] * 100:.0f}%）"
+                )
             lines.append("")
             cagr_text = f"{ctx.cagr:+.2f}%" if ctx.cagr is not None else "不可得"
             cagr_years_label = f"{ctx.cagr_years_span:.1f}" if ctx.cagr_years_span is not None else "?"
