@@ -453,6 +453,7 @@ def build_parser() -> argparse.ArgumentParser:
     pport = sub.add_parser("portfolio", help="组合风险特征（行业集中度/相关性/压力测试）")
     pport.add_argument("holdings", help="holdings.json 路径")
     pport.add_argument("--stress", action="store_true", help="指数 -10%%/-20%%/-30%% 压力测试")
+    pport.add_argument("--positions", action="store_true", help="输出持仓位置状态表（纯状态，无风险分析）")
 
     pthesis = sub.add_parser("thesis", help="投资假设追踪")
     pthesis.add_argument("symbol")
@@ -1766,10 +1767,17 @@ def cmd_check(args: argparse.Namespace) -> int:
 
 
 def cmd_portfolio(args: argparse.Namespace) -> int:
-    from lib.portfolio_review import format_portfolio_review, load_holdings, review_portfolio
+    from lib.portfolio_review import load_holdings
     from pathlib import Path
 
     holdings = load_holdings(Path(args.holdings))
+    if args.positions:
+        from lib.positions import build_position_rows_from_holdings, position_table
+        if args.stress:
+            print("⚠️ --stress 与 --positions 互斥，已按 --positions 输出")
+        print(position_table(build_position_rows_from_holdings(holdings)))
+        return 0
+    from lib.portfolio_review import format_portfolio_review, review_portfolio
     result = review_portfolio(holdings, stress=args.stress)
     print(format_portfolio_review(result))
     return 0

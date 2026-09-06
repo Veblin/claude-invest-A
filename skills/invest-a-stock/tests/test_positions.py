@@ -58,3 +58,38 @@ def test_invalid_dates_rejected():
     with pytest.raises(PositionError):
         build_position_row(symbol="x", price=1.0, cost=1.0,
                            buy_date="2025/06/01", today="2026-09-06")
+
+
+def test_build_position_rows_from_holdings_with_kline(monkeypatch):
+    from unittest.mock import patch
+    from lib._invest_path import ensure_skills_lib_on_path
+    ensure_skills_lib_on_path()
+    from lib import collector as col
+    from lib.positions import build_position_rows_from_holdings
+
+    with patch.object(col, "collect_kline", return_value={
+        "dimension": "kline", "data": [{"trade_date": "2026-09-04", "close": 135.0}],
+        "status": "available",
+    }):
+        rows = build_position_rows_from_holdings(
+            [{"symbol": "300308", "weight": 0.4, "cost": 150.0, "buy_date": "2025-06-01"}],
+            today="2026-09-05",
+        )
+    assert rows[0]["band"] == "loss"
+    assert rows[0]["pnl_pct"] == pytest.approx(-0.10, abs=1e-6)
+
+
+def test_build_position_rows_kline_failure_degrades_to_unknown():
+    from unittest.mock import patch
+    from lib._invest_path import ensure_skills_lib_on_path
+    ensure_skills_lib_on_path()
+    from lib import collector as col
+    from lib.positions import build_position_rows_from_holdings
+
+    with patch.object(col, "collect_kline", side_effect=RuntimeError("net down")):
+        rows = build_position_rows_from_holdings(
+            [{"symbol": "600176", "weight": 0.5, "cost": 20.0, "buy_date": "2026-01-05"}],
+            today="2026-09-05",
+        )
+    assert rows[0]["band"] == "unknown" and rows[0]["pnl_pct"] is None
+    assert rows[0]["note"]

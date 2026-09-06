@@ -59,6 +59,51 @@ def test_root_mode_survives_synthesize():
     assert args.mode == "brief"
 
 
+def test_portfolio_positions_flag(tmp_path):
+    """P-1（v0.2.9）：portfolio 子命令接受 --positions。"""
+    holdings = tmp_path / "h.json"
+    holdings.write_text(
+        '[{"symbol": "300308", "weight": 0.4, "cost": 150.0, "buy_date": "2025-06-01"}]',
+        encoding="utf-8",
+    )
+    args = _parse(["portfolio", str(holdings), "--positions"])
+    assert args.positions is True
+    assert args.stress is False
+
+
+def test_cmd_portfolio_positions_prints_state_table(tmp_path, monkeypatch, capsys):
+    """P-1：--positions 输出位置状态表（档位无盈亏数值、无成本数字）。"""
+    import argparse
+    import json
+    from unittest.mock import patch
+
+    import invest
+    from lib._invest_path import ensure_skills_lib_on_path
+    ensure_skills_lib_on_path()
+    from lib import collector as col
+
+    holdings = tmp_path / "h.json"
+    holdings.write_text(
+        json.dumps([{"symbol": "300308", "weight": 0.4, "cost": 150.0,
+                     "buy_date": "2025-06-01"}], ensure_ascii=False),
+        encoding="utf-8",
+    )
+    with patch.object(col, "collect_kline", return_value={
+        "dimension": "kline",
+        "data": [{"trade_date": "2026-09-04", "close": 135.0}],
+        "status": "available",
+    }):
+        rc = invest.cmd_portfolio(argparse.Namespace(
+            holdings=str(holdings), positions=True, stress=False,
+        ))
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "标的" in out and "档位" in out
+    assert "浅亏" in out            # 档位词渲染
+    assert "150" not in out         # 成本数值不得进入输出
+    assert "-10" not in out         # 盈亏数值不得进入输出
+
+
 def test_report_defaults_unchanged():
     """未给 --plan/--mode 时 report 默认值保持 plan='' / mode='full'。"""
     args = _parse(["report", "600176"])

@@ -86,6 +86,38 @@ def build_position_row(*, symbol: str, price: float | None,
     }
 
 
+def build_position_rows_from_holdings(holdings: list[dict], today: str | None = None) -> list[dict[str, Any]]:
+    """holdings → 位置状态行。现价取最近收盘（K 线统一前复权，仅作位置参考）；
+    不可得 → price=None（档位 unknown）。网络失败单标的降级，不阻塞整表。
+    """
+    from ._invest_path import ensure_skills_lib_on_path
+    ensure_skills_lib_on_path()
+    from data_bridge import get_kline  # noqa: E402
+    from .shared_dates import shanghai_days_ago as _days_ago
+
+    today = today or _dt.date.today().isoformat()
+    rows: list[dict[str, Any]] = []
+    for h in holdings:
+        sym = str(h.get("symbol", "")).strip()
+        if not sym:
+            continue
+        price = None
+        try:
+            kdim = get_kline(sym, start_date=_days_ago(10))
+            data = kdim.get("data") if isinstance(kdim, dict) else None
+            if isinstance(data, list) and data:
+                last = max(data, key=lambda r: str(r.get("trade_date") or ""))
+                raw = last.get("close")
+                price = float(raw) if raw is not None else None
+        except Exception:
+            price = None
+        rows.append(build_position_row(
+            symbol=sym, price=price, cost=h.get("cost"), buy_date=h.get("buy_date"),
+            today=today, name=h.get("name"), weight=h.get("weight"),
+        ))
+    return rows
+
+
 def position_table(rows: list[dict[str, Any]]) -> str:
     """渲染位置表（弱显著：档位中文 + 天数，不带盈亏数值与成本）。"""
     head = "| 标的 | 名称 | 档位 | 持有天数 | 持仓占比 | 备注 |"
