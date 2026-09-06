@@ -227,3 +227,56 @@ class TestPortfolioReview:
         # N/A → 0；有效权重仅 0.5
         conc = dict(result["industry_concentration"])
         assert conc.get("制造业") == 0.5
+
+
+class TestLoadHoldingsPositionFields:
+    """P-1（v0.2.9）：holdings.json 可选位置字段 cost/buy_date/name/shares + 校验."""
+
+    def test_load_holdings_optional_position_fields(self, tmp_path):
+        import json
+        from lib import portfolio_review as pr
+
+        p = tmp_path / "holdings.json"
+        p.write_text(json.dumps([
+            {"symbol": "300308", "weight": 0.4, "cost": 150.0, "buy_date": "2025-06-01"},
+            {"symbol": "600176", "weight": 0.6},
+        ]), encoding="utf-8")
+        h = pr.load_holdings(p)
+        assert h[0]["cost"] == 150.0 and h[0]["buy_date"] == "2025-06-01"
+        assert "cost" not in h[1]  # 可选字段缺失不报错
+
+    def test_load_holdings_rejects_cost_without_symbol(self, tmp_path):
+        import json
+        from lib import portfolio_review as pr
+
+        p = tmp_path / "holdings.json"
+        p.write_text(json.dumps([{"cost": 1.0}]), encoding="utf-8")
+        with pytest.raises(ValueError, match="缺少 symbol"):
+            pr.load_holdings(p)
+
+    def test_load_holdings_rejects_unknown_field(self, tmp_path):
+        import json
+        from lib import portfolio_review as pr
+
+        p = tmp_path / "holdings.json"
+        p.write_text(json.dumps([{"symbol": "600176", "weight": 0.5, "target": 99}]), encoding="utf-8")
+        with pytest.raises(ValueError, match="未知字段"):
+            pr.load_holdings(p)
+
+    def test_load_holdings_rejects_bad_cost(self, tmp_path):
+        import json
+        from lib import portfolio_review as pr
+
+        p = tmp_path / "holdings.json"
+        p.write_text(json.dumps([{"symbol": "600176", "weight": 0.5, "cost": -5}]), encoding="utf-8")
+        with pytest.raises(ValueError, match="cost 须为正数"):
+            pr.load_holdings(p)
+
+    def test_load_holdings_rejects_bad_buy_date(self, tmp_path):
+        import json
+        from lib import portfolio_review as pr
+
+        p = tmp_path / "holdings.json"
+        p.write_text(json.dumps([{"symbol": "600176", "weight": 0.5, "buy_date": "2025/06/01"}]), encoding="utf-8")
+        with pytest.raises(ValueError, match="buy_date 须为 YYYY-MM-DD"):
+            pr.load_holdings(p)

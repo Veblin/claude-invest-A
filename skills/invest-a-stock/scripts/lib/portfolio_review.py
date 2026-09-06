@@ -10,10 +10,30 @@ from .nums import safe_float
 from .shared_dates import shanghai_days_ago as _days_ago
 
 
+# P-1（v0.2.9）：holdings 可选位置字段（cost/buy_date 为位置卡输入；name/shares 为展示/计算辅助）
+_ALLOWED_TOP_KEYS = {"symbol", "weight", "name", "cost", "buy_date", "shares"}
+
+
 def load_holdings(path: Path) -> list[dict[str, Any]]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, list):
         raise ValueError("holdings.json 须为 [{symbol, weight}, ...] 数组")
+    for h in data:
+        if not isinstance(h, dict):
+            raise ValueError(f"holdings 项须为 dict，实为 {type(h).__name__}")
+        if not str(h.get("symbol", "")).strip():
+            raise ValueError(f"holdings 项缺少 symbol: {h}")
+        unknown = set(h) - _ALLOWED_TOP_KEYS
+        if unknown:
+            raise ValueError(
+                f"holdings 项含未知字段 {sorted(unknown)}（允许: {sorted(_ALLOWED_TOP_KEYS)}）"
+            )
+        cost = h.get("cost")
+        if cost is not None and (not isinstance(cost, (int, float)) or cost <= 0):
+            raise ValueError(f"{h.get('symbol')}: cost 须为正数")
+        bd = h.get("buy_date")
+        if bd is not None and (not isinstance(bd, str) or len(bd) != 10 or bd[4] != "-"):
+            raise ValueError(f"{h.get('symbol')}: buy_date 须为 YYYY-MM-DD 字符串")
     return data
 
 
