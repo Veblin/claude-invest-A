@@ -11,14 +11,15 @@ import hk_valuation as val
 # ---- hk_financials：东财行 → 引擎键映射（2026-09-06 实测列）----
 
 def test_financial_row_mapping_percent_and_currency():
+    """东财指标列实测为百分数原值（腾讯毛利率 56.21；薄利 0.7005 = 0.70%）——透传不放大。"""
     raw = {
         "REPORT_DATE": "2025-12-31 00:00:00",
         "OPERATE_INCOME": 751766000000,
-        "OPERATE_INCOME_YOY": 0.1386,      # 东财给小数
+        "OPERATE_INCOME_YOY": 13.86,
         "HOLDER_PROFIT": 215000000000,
-        "GROSS_PROFIT_RATIO": 0.5215,      # 小数 → 52.15
-        "NET_PROFIT_RATIO": 28.6,          # 已是百分数
-        "ROE_AVG": 0.2472,
+        "GROSS_PROFIT_RATIO": 56.21,       # 百分数原值
+        "NET_PROFIT_RATIO": 0.7005,        # 薄利公司 0.70%——不得 ×100（review2 HK-2）
+        "ROE_AVG": 21.13,
         "BASIC_EPS": 24.749,
         "BPS": 126.786,
         "CURRENCY": "HKD",
@@ -26,9 +27,9 @@ def test_financial_row_mapping_percent_and_currency():
     row = fin._norm_row(raw)
     assert row["report_date"] == "2025-12-31"
     assert row["revenue"] == 751766000000
-    assert row["gross_margin"] == pytest.approx(52.15)
-    assert row["net_margin"] == pytest.approx(28.6)      # >1 不放大
-    assert row["roe"] == pytest.approx(24.72)
+    assert row["gross_margin"] == pytest.approx(56.21)
+    assert row["net_margin"] == pytest.approx(0.7005)    # 0.70% 原样
+    assert row["roe"] == pytest.approx(21.13)
     assert row["currency"] == "HKD"
 
 

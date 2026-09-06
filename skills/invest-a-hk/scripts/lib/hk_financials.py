@@ -34,15 +34,9 @@ def _norm_row(row: dict[str, Any]) -> dict[str, Any]:
     for src, dst in _FIELD_MAP.items():
         v = row.get(src)
         out[dst] = v
-    # 百分数列东财可能给小数（0.2351）或 23.51——统一为百分数值（23.51）
-    for key in ("gross_margin", "net_margin", "roe", "revenue_yoy", "net_profit_yoy"):
-        v = out.get(key)
-        if v is not None:
-            try:
-                f = float(v)
-            except (TypeError, ValueError):
-                continue
-            out[key] = f * 100 if abs(f) <= 1 else f
+    # 东财港股指标列实测已是百分数单位（腾讯 FY2025 GROSS_PROFIT_RATIO=56.21；
+    # 京东物流 FY2023 NET_PROFIT_RATIO=0.7005 = 0.70% 薄利）——**原值透传**，
+    # 不做 abs<=1 放大（review2 HK-2：曾把 0.7005 放大成 70.05%）。YOY 列不信任，报告自算。
     out["currency"] = str(out.get("currency") or "HKD").strip()
     out["report_date"] = str(out.get("report_date") or "")[:10]
     return out

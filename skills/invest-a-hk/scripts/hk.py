@@ -51,9 +51,15 @@ def _snapshot_row(sym: str) -> dict:
 
 
 def _today() -> str:
-    """港股与 A 股同处 UTC+8——复用共享 dates.shanghai_today（日历完整化归 0.3）。"""
-    import datetime as _dt
-    return _dt.date.today().isoformat()
+    """交易日（上海历——港股同 UTC+8，review2 HK-6：本地钟 UTC+8 以西 00:00-08:00 差一天）。"""
+    from dates import shanghai_today
+    return shanghai_today()
+
+
+def _now_shanghai() -> str:
+    """报告文件时间戳（北京时间，invest.py:787 F2-4 口径：路径时间戳统一北京时间）。"""
+    from dates import shanghai_now
+    return shanghai_now().strftime("%Y-%m-%d-%H-%M-%S")
 
 
 # ---------------------------------------------------------------------------
@@ -101,8 +107,11 @@ def cmd_diagnose(args: argparse.Namespace) -> int:
 
     b = hk_tushare.fetch_basic(sym)
     print(f"✅ tushare hk_basic {b.get('name') or '不可得'}（上市 {b.get('list_date') or '—'}，币种 {b.get('currency') or '—'}）")
+    import datetime as _dt
+    _end = _dt.date.today().strftime("%Y%m%d")
+    _start = (_dt.date.today() - _dt.timedelta(days=45)).strftime("%Y%m%d")
     try:
-        d = hk_tushare.fetch_daily_kline(sym, start_date="20260801", end_date="20260906")
+        d = hk_tushare.fetch_daily_kline(sym, start_date=_start, end_date=_end)
         note = f"（最新 {d[0]['trade_date']}" if d else "（间歇性空返回——2026-09-06 实测首调成功、同参重调 0 行，疑限频/权限抖动，作交叉源使用时以非空为准"
         print(f"{'✅' if d else '⚠️'} tushare hk_daily {len(d)} 行 {note}）")
     except Exception as exc:
@@ -117,7 +126,10 @@ def cmd_diagnose(args: argparse.Namespace) -> int:
         ok = False
         print("❌ yfinance        不可得（境外源需代理可达）")
 
-    print(f"\n结论: {'全部连通 ✅' if ok else '部分不可得（详见上表，报告将三态标注）'}")
+    # review2 HK-5：分级结论（硬故障 vs 已知降级不混为一谈）——关键源（腾讯快照/K线、
+    # 东财财务、百度序列、yfinance、hk_basic）任一硬失败才算故障；
+    # hk_daily 间歇性空返回为已知降级（⚠️ 已单独标注），不计入失败
+    print(f"\n结论: {'全部连通 ✅' if ok else '存在硬故障 ❌（详见上表；⚠️ 行属已知降级不判死）'}")
     print("\n注：东财 push2his 域（stock_hk_hist/spot_em）在当前网络环境不可达，v1 不依赖。")
     return 0 if ok else 1
 
@@ -129,14 +141,19 @@ def cmd_diagnose(args: argparse.Namespace) -> int:
 def cmd_snapshot(args: argparse.Namespace) -> int:
     code = hk_codes.parse_hk_symbol(args.symbol)
     q = _snapshot_row(code)
-    if "error" in q:
-        print(q["error"])
+    # review2 HK-4：腾讯对死代码/停牌标的返回 v_pv_none_match 或缺字段——
+    # parse 后关键键为 None，LAW 5 三态必须在此生效，禁止 f"{None:+.2f}" 裸崩
+    if "error" in q or q.get("price") is None:
+        print(f"⚠️ {code} 快照不可得（{q.get('error', '字段缺失——可能标的已退市/停牌/代码无效')}）"
+              "（LAW 5：未获取到任何有效数据，无法判断）")
         return 1
-    print(f"# {q['name']} ({code}) — {q.get('ts', '')[:10]} 港股快照（币种 HKD）")
-    print(f"- 现价 {q['price']}（昨收 {q['prev_close']}，{q['chg_pct']:+.2f}%）")
-    print(f"- 区间 今 {q['low']}~{q['high']} | 52 周 {q['low_52w']}~{q['high_52w']}")
-    print(f"- 成交额 {q['amount'] / 1e8:.1f} 亿 HKD（量 {q['volume'] / 1e6:.0f} 百万股）")
-    print(f"- PE(TTM) {q['pe_ttm']} | 总市值 {q['mcap_hkd_yi']:.0f} 亿 HKD")
+    print(f"# {q.get('name') or code} ({code}) — {str(q.get('ts') or '')[:10]} 港股快照（币种 HKD）")
+    print(f"- 现价 {q['price']}（昨收 {_fmt_num(q.get('prev_close'))}，{_pct(q.get('chg_pct'))}）")
+    print(f"- 区间 今 {_fmt_num(q.get('low'))}~{_fmt_num(q.get('high'))} | "
+          f"52 周 {_fmt_num(q.get('low_52w'))}~{_fmt_num(q.get('high_52w'))}")
+    if q.get("amount") is not None:
+        print(f"- 成交额 {q['amount'] / 1e8:.1f} 亿 HKD（量 {_fmt_num(q.get('volume'), 0)} 股）")
+    print(f"- PE(TTM) {_fmt_num(q.get('pe_ttm'))} | 总市值 {_fmt_num(q.get('mcap_hkd_yi'), 0)} 亿 HKD")
     print(f"[来源: tencent.r_hk qt.gtimg.cn/q=r_hk{code} / {q.get('ts')}]")
     y = hk_yfinance.fetch_info(code)
     if y.get("pb") is not None or y.get("div_yield_pct") is not None:
@@ -177,14 +194,18 @@ def cmd_report(args: argparse.Namespace) -> int:
 
     # --- 快照与多源一致性 ---
     q = _snapshot_row(code)
-    if "error" in q:
+    if "error" in q or q.get("price") is None:
+        # review2 HK-4：关键字段 None（死代码/停牌/字段缺失）→ 三态文件落盘，不裸崩
         lines.append(f"# {code} 港股初步分析 — 快照不可得\n")
-        lines.append(f"⚠️ {q['error']}（LAW 5：未获取到任何有效数据，无法判断）")
+        lines.append(f"⚠️ {q.get('error') or '快照字段缺失（停牌/代码无效/死代码）'}（LAW 5：未获取到任何有效数据，无法判断）")
         _write_report(args, code, "数据不可得", "\n".join(lines))
         return 1
-    lines.append(f"# {q['name']} ({code}) — {_today()} 港股初步分析（交易币种 HKD）\n")
-    lines.append(f"**现价 {q['price']}（{q['chg_pct']:+.2f}%），52 周 {q['low_52w']}~{q['high_52w']}，"
-                 f"PE(TTM) {q['pe_ttm']}，总市值 {q['mcap_hkd_yi']:.0f} 亿 HKD**")
+    lines.append(f"# {q.get('name') or code} ({code}) — {_today()} 港股初步分析（交易币种 HKD）\n")
+    lines.append(
+        f"**现价 {q['price']}（{_pct(q.get('chg_pct'))}），52 周 {_fmt_num(q.get('low_52w'))}"
+        f"~{_fmt_num(q.get('high_52w'))}，PE(TTM) {_fmt_num(q.get('pe_ttm'))}，"
+        f"总市值 {_fmt_num(q.get('mcap_hkd_yi'), 0)} 亿 HKD**"
+    )
     lines.append(f"[来源: tencent.r_hk / {q.get('ts')}]")
     b = hk_tushare.fetch_basic(code)
     if b.get("list_date"):
@@ -342,31 +363,39 @@ def _fmt_num(v, nd=2):
 
 
 def _self_yoy(rows: list[dict], idx: int, key: str) -> float | None:
-    """同比自算（本期/上年同期 −1）——不信任数据源 YOY 列的异常占位值。
+    """同比自算——**上年同期**（同月日、上一年），非相邻报告期。
 
-    返回百分数单位（13.86 = +13.9%），与 _norm_row 的 gross_margin 等口径一致。
+    review2 HK-1 修复：fin_rows 降序为 [2026-06-30 中报, 2025-12-31 年报, 2025-06-30
+    中报, ...]，idx+1 是"上一报告期"（中报 vs 年报 = 口径错配 −45% 级）；
+    上年同期 = 第一个 report_date 同 MM-DD 且更早的行。返回百分数单位（13.86 = +13.9%）。
     """
-    if idx + 1 >= len(rows):
+    cur_date = str(rows[idx].get("report_date") or "")
+    if len(cur_date) < 7:
         return None
-    cur, prev = rows[idx].get(key), rows[idx + 1].get(key)
-    if cur is None or prev is None:
+    mmdd = cur_date[5:]
+    prev = None
+    for j in range(idx + 1, len(rows)):
+        d = str(rows[j].get("report_date") or "")
+        if d[5:] == mmdd:                      # 同月日 = 上年同期（中报对中报/年报对年报）
+            prev = rows[j].get(key)
+            break
+    if prev is None:
         return None
+    c, p = rows[idx].get(key), prev
     try:
-        c, p = float(cur), float(prev)
+        cf, pf = float(c), float(p)
     except (TypeError, ValueError):
         return None
-    if p == 0:
+    if pf == 0:
         return None
-    return (c / p - 1) * 100
+    return (cf / pf - 1) * 100
 
 
 def _write_report(args, code: str, name: str, body: str) -> Path:
-    import datetime as _dt
     outdir = Path(args.outdir or (Path.cwd() / "reports"))
     sub = outdir / f"{code}-{name}"
     sub.mkdir(parents=True, exist_ok=True)
-    ts = _dt.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-    path = sub / f"{ts}.md"
+    path = sub / f"{_now_shanghai()}.md"
     path.write_text(body, encoding="utf-8")
     return path
 
