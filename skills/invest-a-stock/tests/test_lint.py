@@ -427,10 +427,11 @@ class TestP3CostAnchorGuardrail:
     """
 
     _POS = [
-        ("回到成本就卖", "p3-cost-anchor-l0"),
+        ("回到成本就卖", "p3-cost-anchor-threshold"),
         ("等回本再说", "p3-cost-anchor-l0"),
         ("赚够了走人", "p3-cost-anchor-threshold"),
         ("涨到 30% 就走人", "p3-cost-anchor-threshold"),
+        ("回本才走", "p3-cost-anchor-threshold"),
     ]
 
     _NEG = [
@@ -440,6 +441,10 @@ class TestP3CostAnchorGuardrail:
         "跌破均线后按计划止损",              # 市场结构参考点（白名单语义）
         "先做假设检查，不等回本（P-3）",       # 护栏自身词汇（规则内指令，不自触发）
         "买入成本 10 元，现在 15 元",         # 成本事实陈述（无动作）
+        "无需等回本再评估，先检查假设是否失效",  # P-3 自身要求的纪律措辞（F6）
+        "价格回到成本线附近，构成支撑区",       # 市场结构技术位描述（F6）
+        "成本线附近有筹码支撑",               # 同上（F6）
+        "| 持仓成本 | 决策理由 | 执行 |",      # markdown 表格行（F10 skip ^\|）
     ]
 
     def test_p3_positive_lines(self, tmp_path):
@@ -465,8 +470,8 @@ class TestP3CostAnchorGuardrail:
             p3 = [f for f in findings if f.rule_id.startswith("p3-")]
             assert not p3, f"不应命中 P-3: {text} → {[f.context for f in p3]}"
 
-    def test_p3_l1_reason_connector_paragraph(self, tmp_path):
-        """L1 理由连接层：段内『账户历史字段 → 动作词』共现 → warning。"""
+    def test_p3_l1_reason_connector_line(self, tmp_path):
+        """L1 理由连接层（line scope，F10）：『账户历史字段 → 动作词』同现 → warning。"""
         from lib import lint as lint_mod
 
         report = tmp_path / "report.md"
