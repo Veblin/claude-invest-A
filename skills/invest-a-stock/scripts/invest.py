@@ -1809,8 +1809,11 @@ def cmd_attribution(args: argparse.Namespace) -> int:
     except json.JSONDecodeError as exc:
         print(f"⚠️ 快照 JSON 解析失败：{exc}")
         return 1
-    except (KeyError, TypeError) as exc:
+    except KeyError as exc:
         print(f"⚠️ 快照缺必需字段：{exc}（需要 start_mcap/end_mcap/start_np_ttm_visible/end_np_ttm_visible）")
+        return 1
+    except TypeError as exc:
+        print(f"⚠️ 快照字段类型错误：{exc}（mcap/净利须为数值，字符串/NaN 请检查导出源）")
         return 1
     except ZeroDivisionError:
         print("⚠️ 快照 start_mcap 为 0，市值比无法计算")

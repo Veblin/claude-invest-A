@@ -230,3 +230,21 @@ def test_resume_warns_when_store_unavailable(monkeypatch, capsys):
     err = capsys.readouterr().err
     assert "store 模块不可用" in err
     assert "--resume" in err
+
+
+def test_cmd_attribution_type_error_message(tmp_path, capsys):
+    """字段为字符串（JSON 导出常见）→ 类型错误提示而非误导性"缺字段"。"""
+    import argparse
+    import invest
+
+    bad = tmp_path / "typed.json"
+    bad.write_text('{"start_mcap": 1.0, "end_mcap": "0.523", '
+                   '"start_np_ttm_visible": 99, "end_np_ttm_visible": 443}',
+                   encoding="utf-8")
+    rc = invest.cmd_attribution(argparse.Namespace(
+        symbol="300750", snapshot=str(bad), start=None, end=None,
+    ))
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "类型错误" in out
+    assert "缺必需字段" not in out        # 不应误导用户去补已存在的键

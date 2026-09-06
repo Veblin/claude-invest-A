@@ -107,3 +107,72 @@ def test_show_broken_holdings_file_no_crash(tmp_path, capsys):
 def test_parser_accepts_portfolio_flag():
     args = journal.build_parser().parse_args(["show", "1", "--portfolio", "x.json"])
     assert args.portfolio == "x.json"
+
+
+class TestReviewFixes:
+    """code-review max 2026-09-06：journal 导航输入卫生回归。"""
+
+    def test_norm_symbol_strips_exchange_prefix(self):
+        assert journal._norm_symbol("SH600176") == "600176"
+        assert journal._norm_symbol("600176.SH") == "600176"
+        assert journal._norm_symbol("sh600176") == "600176"
+        assert journal._norm_symbol("600176") == "600176"
+        assert journal._norm_symbol("515050") == "515050"
+        assert journal._norm_symbol("HK00700") == "00700"
+
+    def test_show_prefix_mismatch_matches(self, tmp_path, monkeypatch, capsys):
+        """holdings 裸码 600176 vs journal SH600176 → 归一后匹配（F8 修复）。"""
+        from unittest.mock import patch
+        from lib import collector as col
+
+        entry = _fake_entry(symbol="SH600176")
+        monkeypatch.setattr(journal, "get_journal", lambda jid: entry)
+        holdings = tmp_path / "h.json"
+        holdings.write_text(json.dumps([{"symbol": "600176", "weight": 1.0, "cost": 20.0}]),
+                            encoding="utf-8")
+        with patch.object(col, "collect_kline", return_value={
+            "dimension": "kline", "data": [{"trade_date": "2026-09-04", "close": 22.0}],
+            "status": "available",
+        }):
+            rc = journal.cmd_show(1, portfolio=str(holdings))
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "持仓位置导航参考" in out
+        assert "跳过位置导航参考" not in out
+
+    def test_show_invalid_holdings_content_no_crash(self, tmp_path, monkeypatch, capsys):
+        """cost 为字符串（Excel 导出形态）→ load_holdings 校验错误，友好输出不崩（F1）。"""
+        entry = _fake_entry()
+        monkeypatch.setattr(journal, "get_journal", lambda jid: entry)
+        holdings = tmp_path / "h.json"
+        holdings.write_text(json.dumps(
+            [{"symbol": "300308", "cost": "150.0", "buy_date": "2025-06-01"}],
+        ), encoding="utf-8")
+        rc = journal.cmd_show(1, portfolio=str(holdings))
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "校验失败" in out
+        assert "=== 日志 #1 ===" in out       # 正常 show 输出不受影响
+
+    def test_show_multi_batch_all_rows_rendered(self, tmp_path, monkeypatch, capsys):
+        """同 symbol 分批建仓 → 全部批次行渲染 + 注记（F11）。"""
+        from unittest.mock import patch
+        from lib import collector as col
+
+        entry = _fake_entry()
+        monkeypatch.setattr(journal, "get_journal", lambda jid: entry)
+        holdings = tmp_path / "h.json"
+        holdings.write_text(json.dumps([
+            {"symbol": "300308", "weight": 0.2, "cost": 150.0, "buy_date": "2025-06-01"},
+            {"symbol": "300308", "weight": 0.2, "cost": 120.0, "buy_date": "2026-01-05"},
+        ]), encoding="utf-8")
+        with patch.object(col, "collect_kline", return_value={
+            "dimension": "kline", "data": [{"trade_date": "2026-09-04", "close": 135.0}],
+            "status": "available",
+        }):
+            rc = journal.cmd_show(1, portfolio=str(holdings))
+        out = capsys.readouterr().out
+        nav = out.split("持仓位置导航参考")[-1]
+        assert rc == 0
+        assert "2 条持仓记录" in nav
+        assert "浅亏" in nav and "浮盈" in nav     # 两批次不同档位均渲染

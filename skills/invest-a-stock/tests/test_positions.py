@@ -93,3 +93,92 @@ def test_build_position_rows_kline_failure_degrades_to_unknown():
         )
     assert rows[0]["band"] == "unknown" and rows[0]["pnl_pct"] is None
     assert rows[0]["note"]
+
+
+class TestReviewFixes:
+    """code-review max 2026-09-06：positions 输入卫生修复回归。"""
+
+    def test_nan_cost_rejected(self):
+        import math
+        with pytest.raises(PositionError, match="NaN"):
+            build_position_row(symbol="x", price=10.0, cost=float("nan"),
+                               buy_date=None, today="2026-09-06")
+
+    def test_nan_price_degrades_unknown(self):
+        import math
+        row = build_position_row(symbol="x", price=float("nan"), cost=10.0,
+                                 buy_date=None, today="2026-09-06")
+        assert row["band"] == "unknown" and row["pnl_pct"] is None
+
+    def test_nan_pnl_never_gain_thick(self):
+        # NaN 比较恒 False → 旧实现落入 gain_thick（最激进档）——必须降级 unknown
+        assert band_for_pnl(float("nan")) == "unknown"
+
+    def test_future_buy_date_no_crash(self):
+        row = build_position_row(symbol="x", price=10.0, cost=10.0,
+                                 buy_date="2027-01-01", today="2026-09-06")
+        assert row["holding_days"] is None and "buy_date" in row["note"]
+
+    def test_fmt_weight_variants(self):
+        from lib.positions import _fmt_weight
+        assert _fmt_weight(0.4) == "40%"
+        assert _fmt_weight("40%") == "40%"
+        assert _fmt_weight(40) == "40%"          # 百分比直觉写法不渲染 4000%
+        assert _fmt_weight(1.0) == "100%"
+        assert _fmt_weight("N/A") == "—"
+        assert _fmt_weight(None) == "—"
+        assert _fmt_weight(float("nan")) == "—"
+
+    def test_rows_no_cost_skips_network(self, monkeypatch):
+        """无 cost 的行不触发 get_kline（档位恒 unknown，不付网络成本）。"""
+        from unittest.mock import patch
+        from lib._invest_path import ensure_skills_lib_on_path
+        ensure_skills_lib_on_path()
+        from lib import collector as col
+        from lib.positions import build_position_rows_from_holdings
+
+        with patch.object(col, "collect_kline", side_effect=AssertionError("不应拉取")) as m:
+            rows = build_position_rows_from_holdings(
+                [{"symbol": "600176", "weight": 0.5}], today="2026-09-05",
+            )
+        assert rows[0]["band"] == "unknown"
+        m.assert_not_called()
+
+    def test_rows_dedup_fetch_once_per_symbol(self):
+        from unittest.mock import patch
+        from lib._invest_path import ensure_skills_lib_on_path
+        ensure_skills_lib_on_path()
+        from lib import collector as col
+        from lib.positions import build_position_rows_from_holdings
+
+        with patch.object(col, "collect_kline", return_value={
+            "dimension": "kline",
+            "data": [{"trade_date": "2026-09-04", "close": 135.0}],
+            "status": "available",
+        }) as m:
+            rows = build_position_rows_from_holdings([
+                {"symbol": "300308", "cost": 150.0, "buy_date": "2025-06-01"},
+                {"symbol": "300308", "cost": 120.0, "buy_date": "2026-01-05"},
+            ], today="2026-09-05")
+        assert m.call_count == 1                     # 同 symbol 只拉一次
+        # cost 150 → -10% (loss)；cost 120 → +12.5% (gain)
+        assert rows[0]["band"] == "loss" and rows[1]["band"] == "gain"
+
+    def test_stale_price_gets_note(self):
+        from unittest.mock import patch
+        from lib._invest_path import ensure_skills_lib_on_path
+        ensure_skills_lib_on_path()
+        from lib import collector as col
+        from lib.positions import build_position_rows_from_holdings
+
+        with patch.object(col, "collect_kline", return_value={
+            "dimension": "kline",
+            # 最新一根在 7 个自然日前（窗口内停牌模拟）
+            "data": [{"trade_date": "2026-08-25", "close": 150.0},
+                     {"trade_date": "2026-09-01", "close": 155.0}],
+            "status": "available",
+        }):
+            rows = build_position_rows_from_holdings(
+                [{"symbol": "300308", "cost": 150.0}], today="2026-09-06",
+            )
+        assert "现价截至" in rows[0]["note"]

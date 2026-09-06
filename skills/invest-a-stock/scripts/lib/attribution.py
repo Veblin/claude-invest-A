@@ -24,6 +24,12 @@ def decompose_move(*, start_price_ratio: float, end_price_ratio: float,
 
     全部为小数（-0.48 = -48%）。校验行 g_check 使恒等式可机器验证。
     """
+    # NaN/Infinity 守卫（code-review max F7）：NaN<=0 恒 False 曾穿透打印 "+nan%"
+    import math
+    for label, v in (("start_price_ratio", start_price_ratio), ("end_price_ratio", end_price_ratio),
+                     ("start_eps", start_eps), ("end_eps", end_eps)):
+        if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+            return {"error": f"{label} 含 NaN/Infinity，快照数据非法"}
     if start_eps <= 0 or end_eps <= 0:
         return {"error": "盈利须为正（亏损段归因无意义，不做 PE 负数分解）"}
     g_price = end_price_ratio / start_price_ratio - 1.0

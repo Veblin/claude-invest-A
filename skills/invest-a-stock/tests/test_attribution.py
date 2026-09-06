@@ -57,3 +57,17 @@ def test_catl_fy_caliber_matches_doc():
                        start_eps=159.31, end_eps=441.21)
     assert d["g_earnings"] == pytest.approx(1.77, rel=0.002)
     assert d["g_multiple"] == pytest.approx(-0.811, abs=0.002)
+
+
+def test_decompose_nan_rejected():
+    import math
+    d = decompose_move(start_price_ratio=1.0, end_price_ratio=float("nan"),
+                       start_eps=1.0, end_eps=2.0)
+    assert "error" in d and "NaN" in d["error"]
+
+
+def test_decompose_inf_rejected():
+    import math
+    d = decompose_move(start_price_ratio=1.0, end_price_ratio=math.inf,
+                       start_eps=1.0, end_eps=2.0)
+    assert "error" in d

@@ -49,29 +49,40 @@ _NAV_FRAMEWORK = """### 导航参考（决策权在用户，LAW 6/6a）
 > 除此之外：决策理由删去账户历史字段后若不再成立，即为成本锚定伪装。"""
 
 
+def _norm_symbol(raw: str) -> str:
+    """symbol 归一（code-review max F8）：去非数字前缀/后缀（SH600176/600176.SH →
+    600176），journal DB 侧只做 upper 不做前缀处理。非纯数字代码（港股等）原样 upper。"""
+    s = raw.strip().upper()
+    digits = "".join(ch for ch in s if ch.isdigit())
+    return digits if digits else s
+
+
 def _print_position_nav(symbol: str, holdings_path: str) -> None:
-    """P-2 持仓位置导航参考：位置卡（纯状态）+ if-then 框架（非操作建议）。"""
+    """P-2 持仓位置导航参考：位置卡（纯状态）+ if-then 框架（非操作建议）。
+
+    code-review max 修复：
+    - schema 校验复用 invest-a-stock lib.portfolio_review.load_holdings（单一实现，
+      替代手写 json.loads 零校验——cost 字符串/非法日期/非 dict 行曾裸崩溃）
+    - symbol 匹配按纯数字归一（SH600176 vs 600176 前缀失配曾静默跳过）
+    - 同 symbol 多批次（分批建仓）渲染全部匹配行的位置表（曾只渲染 JSON 首行）
+    """
+    from lib.portfolio_review import load_holdings
     from lib.positions import build_position_rows_from_holdings, position_table
 
     try:
-        data = json.loads(Path(holdings_path).read_text(encoding="utf-8"))
+        data = load_holdings(Path(holdings_path))
     except (OSError, ValueError) as exc:
-        print(f"⚠️ holdings.json 读取失败，跳过位置导航参考：{exc}")
+        print(f"⚠️ holdings.json 读取失败或校验失败，跳过位置导航参考：{exc}")
         return
-    if not isinstance(data, list):
-        print("⚠️ holdings.json 须为数组，跳过位置导航参考")
-        return
-    # journal DB 入库即 upper()（db.py），holdings 可能小写——双侧归一后匹配
-    sym_key = symbol.strip().upper()
-    match = next(
-        (h for h in data if str(h.get("symbol", "")).strip().upper() == sym_key),
-        None,
-    )
-    if match is None:
+    sym_key = _norm_symbol(symbol)
+    matches = [h for h in data if _norm_symbol(str(h.get("symbol", ""))) == sym_key]
+    if not matches:
         print("⚠️ 该标的不在 holdings.json，跳过位置导航参考")
         return
     print("\n## 持仓位置导航参考（三隔离 · if-then 框架 · 非操作建议）\n")
-    print(position_table(build_position_rows_from_holdings([match])))
+    print(position_table(build_position_rows_from_holdings(matches)))
+    if len(matches) > 1:
+        print(f"> 注：该标的存在 {len(matches)} 条持仓记录（分批建仓），上表逐批列出。\n")
     print(_NAV_FRAMEWORK)
 
 

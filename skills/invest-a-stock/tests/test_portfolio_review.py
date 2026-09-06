@@ -230,7 +230,11 @@ class TestPortfolioReview:
 
 
 class TestLoadHoldingsPositionFields:
-    """P-1（v0.2.9）：holdings.json 可选位置字段 cost/buy_date/name/shares + 校验."""
+    """P-1（v0.2.9）：holdings.json 可选位置字段 cost/buy_date + 语义校验。
+
+    code-review max 修复：symbol 必填/未知键检查回退宽容（v0.1.9 pass-through BC）；
+    P-1 字段做强校验（类型/正数/非 NaN/真实日期）。
+    """
 
     def test_load_holdings_optional_position_fields(self, tmp_path):
         import json
@@ -245,22 +249,27 @@ class TestLoadHoldingsPositionFields:
         assert h[0]["cost"] == 150.0 and h[0]["buy_date"] == "2025-06-01"
         assert "cost" not in h[1]  # 可选字段缺失不报错
 
-    def test_load_holdings_rejects_cost_without_symbol(self, tmp_path):
+    def test_load_holdings_tolerates_legacy_fields_and_empty_symbol(self, tmp_path):
+        """BC 兼容（v0.1.9 pass-through）：缺 symbol 行与多余字段不报错——
+        review_portfolio 内部本就 continue 容忍空 symbol。"""
         import json
         from lib import portfolio_review as pr
 
         p = tmp_path / "holdings.json"
-        p.write_text(json.dumps([{"cost": 1.0}]), encoding="utf-8")
-        with pytest.raises(ValueError, match="缺少 symbol"):
-            pr.load_holdings(p)
+        p.write_text(json.dumps([
+            {"weight": 0.5},                                    # 缺 symbol（旧测试：quietly skipped）
+            {"symbol": "600176", "weight": 0.5, "note": "legacy", "target": 99},
+        ]), encoding="utf-8")
+        h = pr.load_holdings(p)
+        assert len(h) == 2
 
-    def test_load_holdings_rejects_unknown_field(self, tmp_path):
+    def test_load_holdings_rejects_string_cost(self, tmp_path):
         import json
         from lib import portfolio_review as pr
 
         p = tmp_path / "holdings.json"
-        p.write_text(json.dumps([{"symbol": "600176", "weight": 0.5, "target": 99}]), encoding="utf-8")
-        with pytest.raises(ValueError, match="未知字段"):
+        p.write_text(json.dumps([{"symbol": "300308", "cost": "150.0"}]), encoding="utf-8")
+        with pytest.raises(ValueError, match="cost 须为数值"):
             pr.load_holdings(p)
 
     def test_load_holdings_rejects_bad_cost(self, tmp_path):
@@ -272,11 +281,31 @@ class TestLoadHoldingsPositionFields:
         with pytest.raises(ValueError, match="cost 须为正数"):
             pr.load_holdings(p)
 
+    def test_load_holdings_rejects_nan_cost(self, tmp_path):
+        """NaN 穿透守卫：NaN<=0 恒 False，必须显式 isnan 拒绝。"""
+        import json
+        from lib import portfolio_review as pr
+
+        p = tmp_path / "holdings.json"
+        p.write_text(json.dumps([{"symbol": "300308", "cost": float("nan")}]), encoding="utf-8")
+        with pytest.raises(ValueError, match="cost 须为正数"):
+            pr.load_holdings(p)
+
     def test_load_holdings_rejects_bad_buy_date(self, tmp_path):
         import json
         from lib import portfolio_review as pr
 
         p = tmp_path / "holdings.json"
         p.write_text(json.dumps([{"symbol": "600176", "weight": 0.5, "buy_date": "2025/06/01"}]), encoding="utf-8")
-        with pytest.raises(ValueError, match="buy_date 须为 YYYY-MM-DD"):
+        with pytest.raises(ValueError, match="buy_date 须为"):
+            pr.load_holdings(p)
+
+    def test_load_holdings_rejects_semantically_bad_buy_date(self, tmp_path):
+        """形状合法但语义非法（2025-06-31）必须在加载期拒绝，而非消费端崩。"""
+        import json
+        from lib import portfolio_review as pr
+
+        p = tmp_path / "holdings.json"
+        p.write_text(json.dumps([{"symbol": "300308", "buy_date": "2025-06-31"}]), encoding="utf-8")
+        with pytest.raises(ValueError, match="真实日期"):
             pr.load_holdings(p)
