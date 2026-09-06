@@ -32,7 +32,9 @@ import hk_codes  # noqa: E402
 import hk_financials  # noqa: E402
 import hk_kline  # noqa: E402
 import hk_quote  # noqa: E402
+import hk_tushare  # noqa: E402
 import hk_valuation  # noqa: E402
+import hk_yfinance  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -97,6 +99,24 @@ def cmd_diagnose(args: argparse.Namespace) -> int:
         ok = False
         print(f"❌ 百度估值序列    {type(exc).__name__}: {exc}")
 
+    b = hk_tushare.fetch_basic(sym)
+    print(f"✅ tushare hk_basic {b.get('name') or '不可得'}（上市 {b.get('list_date') or '—'}，币种 {b.get('currency') or '—'}）")
+    try:
+        d = hk_tushare.fetch_daily_kline(sym, start_date="20260801", end_date="20260906")
+        note = f"（最新 {d[0]['trade_date']}" if d else "（间歇性空返回——2026-09-06 实测首调成功、同参重调 0 行，疑限频/权限抖动，作交叉源使用时以非空为准"
+        print(f"{'✅' if d else '⚠️'} tushare hk_daily {len(d)} 行 {note}）")
+    except Exception as exc:
+        ok = False
+        print(f"❌ tushare hk_daily {type(exc).__name__}: {exc}")
+
+    y = hk_yfinance.fetch_info(sym)
+    if y.get("price"):
+        print(f"✅ yfinance        {y.get('name')} 价 {y.get('price')} {y.get('currency')} "
+              f"PB {y.get('pb')} 股息率 {y.get('div_yield_pct')}%")
+    else:
+        ok = False
+        print("❌ yfinance        不可得（境外源需代理可达）")
+
     print(f"\n结论: {'全部连通 ✅' if ok else '部分不可得（详见上表，报告将三态标注）'}")
     print("\n注：东财 push2his 域（stock_hk_hist/spot_em）在当前网络环境不可达，v1 不依赖。")
     return 0 if ok else 1
@@ -118,6 +138,15 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
     print(f"- 成交额 {q['amount'] / 1e8:.1f} 亿 HKD（量 {q['volume'] / 1e6:.0f} 百万股）")
     print(f"- PE(TTM) {q['pe_ttm']} | 总市值 {q['mcap_hkd_yi']:.0f} 亿 HKD")
     print(f"[来源: tencent.r_hk qt.gtimg.cn/q=r_hk{code} / {q.get('ts')}]")
+    y = hk_yfinance.fetch_info(code)
+    if y.get("pb") is not None or y.get("div_yield_pct") is not None:
+        print(f"- PB {y.get('pb')} | 股息率 {y.get('div_yield_pct')}%（yfinance 口径，税后见报告注）"
+              f" [来源: yfinance {code}.HK info]")
+        if y.get("pe_ttm") is not None:
+            diff = (y["pe_ttm"] / q["pe_ttm"] - 1) * 100 if q.get("pe_ttm") else None
+            print(f"- PE 交叉：yfinance {y['pe_ttm']:.2f} vs 腾讯 {q['pe_ttm']} "
+                  f"（差 {diff:+.1f}%——口径差异，不裁决）" if diff is not None
+                  else f"- PE 交叉：yfinance {y['pe_ttm']:.2f}（腾讯不可得）")
     return 0
 
 
@@ -153,10 +182,22 @@ def cmd_report(args: argparse.Namespace) -> int:
         lines.append(f"⚠️ {q['error']}（LAW 5：未获取到任何有效数据，无法判断）")
         _write_report(args, code, "数据不可得", "\n".join(lines))
         return 1
-    lines.append(f"# {q['name']} ({code}) — {_today()} 港股初步分析（币种 HKD）\n")
+    lines.append(f"# {q['name']} ({code}) — {_today()} 港股初步分析（交易币种 HKD）\n")
     lines.append(f"**现价 {q['price']}（{q['chg_pct']:+.2f}%），52 周 {q['low_52w']}~{q['high_52w']}，"
                  f"PE(TTM) {q['pe_ttm']}，总市值 {q['mcap_hkd_yi']:.0f} 亿 HKD**")
-    lines.append(f"[来源: tencent.r_hk / {q.get('ts')}]\n")
+    lines.append(f"[来源: tencent.r_hk / {q.get('ts')}]")
+    b = hk_tushare.fetch_basic(code)
+    if b.get("list_date"):
+        lines.append(f"[来源: tushare.hk_basic] 上市 {b['list_date']}（主板/交易币种 {b.get('currency') or '—'}；"
+                     f"报表货币以年报披露为准）\n")
+    else:
+        lines.append("")
+    y = hk_yfinance.fetch_info(code)
+    if y.get("price") and abs((y["price"] - q["price"]) / q["price"]) > 0.01:
+        lines.append(
+            f"> 🟡 多源交叉：yfinance 现价 {y['price']} vs 腾讯 {q['price']}"
+            f"（差 {abs((y['price'] - q['price']) / q['price']) * 100:.1f}%——快照时点差，不裁决）\n"
+        )
 
     # --- 财务摘要（东财，直连上下文） ---
     fin_rows: list[dict] = []
@@ -189,21 +230,35 @@ def cmd_report(args: argparse.Namespace) -> int:
     else:
         lines.append("## 财务摘要\n数据不可得（东财财务接口不可达或标的无财务数据）——三态标注。\n")
 
-    # --- 估值位置（百度序列 + 现价 PE 交叉） ---
+    # --- 估值位置（百度序列 + 现价 PE/PB 交叉：yfinance 提供当前 PB 与股息率） ---
     lines.append("## 估值位置（分位窗口=序列可得区间；港股口径注记）\n")
+    y = hk_yfinance.fetch_info(code)
+    pb_cur = y.get("pb")
     try:
         pe_s = hk_valuation.fetch_valuation_series(code, "市盈率(TTM)", "近五年")
         pe_pos = hk_valuation.percentile_position(pe_s, q.get("pe_ttm"))
         pb_s = hk_valuation.fetch_valuation_series(code, "市净率", "近五年")
-        pb_pos = hk_valuation.percentile_position(pb_s, None)  # PB 当前值腾讯无——仅序列中位
+        pb_pos = hk_valuation.percentile_position(pb_s, pb_cur)
         if pe_pos["median"] is not None:
             lines.append(
                 f"- **PE(TTM) {q['pe_ttm']}，序列分位 {pe_pos['pct']:.1f}%（中位 {pe_pos['median']:.1f}）**"
                 if pe_pos["pct"] is not None else
                 f"- PE(TTM) {q['pe_ttm']}（序列 {pe_pos['n']} 日，中位 {pe_pos['median']:.1f}；当前值口径与序列末值有差）"
             )
-        if pb_pos["median"] is not None:
-            lines.append(f"- PB 序列中位 {pb_pos['median']:.2f}（{pb_pos['n']} 日；当前 PB 见快照源交叉）")
+        if pb_pos["median"] is not None and pb_cur is not None:
+            lines.append(
+                f"- **PB {pb_cur:.2f}（yfinance 当前值），序列分位 {pb_pos['pct']:.1f}%"
+                f"（中位 {pb_pos['median']:.2f}）**"
+                if pb_pos["pct"] is not None else
+                f"- PB {pb_cur:.2f} vs 序列中位 {pb_pos['median']:.2f}"
+            )
+        elif pb_pos["median"] is not None:
+            lines.append(f"- PB 序列中位 {pb_pos['median']:.2f}（{pb_pos['n']} 日；当前 PB 不可得）")
+        if y.get("div_yield_pct") is not None:
+            lines.append(
+                f"- 股息率 {y['div_yield_pct']:.2f}%（名义；港股通税后约 ×0.8）"
+                f" [来源: yfinance {code}.HK]"
+            )
         if pe_pos.get("note"):
             lines.append(f"- ⚠️ {pe_pos['note']}")
     except Exception as exc:

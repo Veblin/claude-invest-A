@@ -14,6 +14,7 @@ dependencies = [
   "tickflow>=0.1.0",
   "pyyaml>=6.0.3",
   "tushare>=1.4.29",
+  "yfinance>=1.7.0",
 ]
 
 [dependency-groups]

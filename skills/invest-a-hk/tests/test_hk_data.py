@@ -69,3 +69,23 @@ def test_percentile_negative_current_position_only():
 def test_percentile_empty_series():
     out = val.percentile_position([], cur=10.0)
     assert out["n"] == 0 and out["median"] is None
+
+
+# ---- hk_yfinance：代码形态与股息率脏值防线（HK-4 增补）----
+
+def test_yahoo_sym_four_digit_padding():
+    import hk_yfinance as yf
+    assert yf._yahoo_sym("00700") == "0700.HK"     # 700 → 4 位补零
+    assert yf._yahoo_sym("1211") == "1211.HK"      # 4 位原样
+    assert yf._yahoo_sym("01211") == "1211.HK"     # 去多余前导零
+    assert yf._yahoo_sym("00941") == "0941.HK"
+
+
+def test_div_yield_norm_pure():
+    """Yahoo dividendYield 单位漂移防线纯函数：>25% 判脏值丢弃（01211 曾 48%）。"""
+    import hk_yfinance as yf
+    assert yf._norm_div_yield(1.2) == 1.2          # 0700 百分数直用
+    assert yf._norm_div_yield(0.48) == 0.48        # 01211 百分数直用
+    assert yf._norm_div_yield(48.0) is None        # 脏值（旧 ×100 残留）
+    assert yf._norm_div_yield(-1.0) is None
+    assert yf._norm_div_yield(0) is None
