@@ -455,6 +455,12 @@ def build_parser() -> argparse.ArgumentParser:
     pport.add_argument("--stress", action="store_true", help="指数 -10%%/-20%%/-30%% 压力测试")
     pport.add_argument("--positions", action="store_true", help="输出持仓位置状态表（纯状态，无风险分析）")
 
+    pattr = sub.add_parser("attribution", help="价格归因分解：盈利贡献 vs 估值贡献（V-1，市值口径）")
+    pattr.add_argument("symbol")
+    pattr.add_argument("--snapshot", metavar="PATH", help="端点快照 JSON（start_mcap/end_mcap/start_np_ttm_visible/end_np_ttm_visible）")
+    pattr.add_argument("--start", metavar="YYYY-MM", help="区间起点（记录用）")
+    pattr.add_argument("--end", metavar="YYYY-MM", help="区间终点（记录用）")
+
     pthesis = sub.add_parser("thesis", help="投资假设追踪")
     pthesis.add_argument("symbol")
     pthesis.add_argument("--init", action="store_true", help="初始化假设模板")
@@ -1783,6 +1789,38 @@ def cmd_portfolio(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_attribution(args: argparse.Namespace) -> int:
+    import json
+    from pathlib import Path
+    from lib.attribution import decompose_move
+
+    if not args.snapshot:
+        print("⚠️ 实时归因暂不可用：K 线为统一前复权，不复权收盘与历史股本无公开数据通道（LAW 5 三态：不可得）。")
+        print("请以 --snapshot PATH 提供端点快照（总市值 + 当时可见 TTM 归母净利，口径见调研 v-domain-attribution-methodology §3）。")
+        return 1
+    snap = json.loads(Path(args.snapshot).read_text(encoding="utf-8"))
+    d = decompose_move(
+        start_price_ratio=1.0,
+        end_price_ratio=snap["end_mcap"] / snap["start_mcap"],
+        start_eps=snap["start_np_ttm_visible"],
+        end_eps=snap["end_np_ttm_visible"],
+    )
+    if "error" in d:
+        print(f"⚠️ {d['error']}")
+        return 1
+    span = f"（{args.start or snap.get('start_date', '?')} → {args.end or snap.get('end_date', '?')}）"
+    print(f"# 价格归因分解 {args.symbol} {span}")
+    print(f"- 价格贡献：{d['g_price'] * 100:+.1f}%（总市值口径：不复权收盘 × 当时总股本）")
+    print(f"- 盈利贡献：{d['g_earnings'] * 100:+.1f}%")
+    print(f"- 估值贡献：{d['g_multiple'] * 100:+.1f}%")
+    print(f"- 恒等式校验：(1+g_p)=(1+g_E)(1+g_M) 残差 {d['g_check']:.2e}")
+    print(f"- 口径注记：{d['eps_note']}")
+    if snap.get("source_notes"):
+        print(f"- 数据来源注记：{snap['source_notes']}")
+    print("\n*多情景参考：本分解为历史区间事实描述，不构成投资建议。*")
+    return 0
+
+
 def _format_thesis_status(t: dict) -> str:
     """thesis --status 人读输出（E4）：失效/触发日期戳展示。
 
@@ -2403,6 +2441,7 @@ CMD_DISPATCH = {
     "portfolio": cmd_portfolio, "thesis": cmd_thesis, "shock": cmd_shock,
     "risk-reward": cmd_risk_reward, "ic": cmd_ic, "value": cmd_value,
     "classify": cmd_classify, "market-status": cmd_market_status,
+    "attribution": cmd_attribution,
     "etf-flow": cmd_etf_flow, "catalyst": cmd_catalyst,
 }
 

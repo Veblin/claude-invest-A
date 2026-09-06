@@ -71,6 +71,52 @@ def test_portfolio_positions_flag(tmp_path):
     assert args.stress is False
 
 
+def test_attribution_parser_accepts_snapshot():
+    """V-1（v0.2.9）：attribution 子命令 --snapshot/--start/--end。"""
+    args = _parse(["attribution", "300750", "--snapshot", "s.json",
+                   "--start", "2021-12", "--end", "2023-12"])
+    assert args.symbol == "300750" and args.snapshot == "s.json"
+    assert args.start == "2021-12" and args.end == "2023-12"
+
+
+def test_cmd_attribution_snapshot_output(capsys):
+    """V-1：宁德 fixture 快照 → 三行分解 + 校验残差 ≈ 0 + 免责声明。"""
+    import argparse
+    from pathlib import Path
+
+    import invest
+    from lib.attribution import load_catl_fixture
+
+    fixture = (
+        Path(__file__).resolve().parent / "fixtures" / "v0.2.9"
+        / "catl_2021_2023_snapshot.json"
+    )
+    rc = invest.cmd_attribution(argparse.Namespace(
+        symbol="300750", snapshot=str(fixture),
+        start="2021-12", end="2023-12",
+    ))
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "价格贡献" in out and "盈利贡献" in out and "估值贡献" in out
+    assert "-47.7%" in out                       # 市值口径价格贡献
+    assert "-88.3%" in out                       # 估值贡献（可见 TTM 口径）
+    assert "恒等式校验" in out
+    assert "不构成投资建议" in out
+
+
+def test_cmd_attribution_no_snapshot_degrades(capsys):
+    """V-1：无 --snapshot 时显式降级（K 线统一前复权，raw 通道不可得，LAW 5）。"""
+    import argparse
+
+    import invest
+    rc = invest.cmd_attribution(argparse.Namespace(
+        symbol="300750", snapshot=None, start=None, end=None,
+    ))
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "不可得" in out
+
+
 def test_cmd_portfolio_positions_prints_state_table(tmp_path, monkeypatch, capsys):
     """P-1：--positions 输出位置状态表（档位无盈亏数值、无成本数字）。"""
     import argparse
