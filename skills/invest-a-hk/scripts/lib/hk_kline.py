@@ -43,7 +43,8 @@ def fetch_kline(sym: str, days: int = 250, timeout: float = 15.0) -> dict[str, A
                 "close": float(r[2]),
                 "high": float(r[3]),
                 "low": float(r[4]),
-                "volume": float(r[5]),
+                # 键名沿用 A 股 collector/technical 约定（compute 消费 r.get("vol")）
+                "vol": float(r[5]),
             })
         except (TypeError, ValueError):
             continue

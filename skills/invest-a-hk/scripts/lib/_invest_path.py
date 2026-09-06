@@ -4,11 +4,12 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-_LIB = Path(__file__).resolve().parent
+_LIB = Path(__file__).resolve().parent          # .../scripts/lib
 if str(_LIB) not in sys.path:
     sys.path.insert(0, str(_LIB))
 
-_SKILLS_LIB = _LIB.parents[3] / "lib"          # skills/lib（parents: lib→scripts→invest-a-hk→skills）
+# _LIB.parents: [0]=invest-a-hk/scripts [1]=invest-a-hk [2]=skills [3]=code
+_SKILLS_LIB = _LIB.parents[2] / "lib"           # skills/lib
 if str(_SKILLS_LIB) not in sys.path:
     sys.path.insert(0, str(_SKILLS_LIB))
 

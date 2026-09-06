@@ -61,6 +61,7 @@ PUBLISH_SKILLS = [
     "invest-a-pulse",
     "invest-a-gap-scan",
     "invest-a-pattern-scan",
+    "invest-a-hk",
 ]
 
 # 包内排除的路径（tests/__pycache__ 等）
@@ -79,6 +80,7 @@ SKILL_META: dict[str, dict[str, str]] = {
     "invest-a-pulse": {"displayName": "invest:a-pulse 市场情绪"},
     "invest-a-gap-scan": {"displayName": "invest:a-gap-scan 缺口扫描"},
     "invest-a-pattern-scan": {"displayName": "invest:a-pattern-scan 形态扫描"},
+    "invest-a-hk": {"displayName": "invest:a-hk 港股研究"},
 }
 
 # 各 skill 的 CLI 入口脚本（SKILL.md 正文「见 CLAUDE.md」/「子命令全清单」改写目标；
@@ -90,6 +92,7 @@ ENTRY_SCRIPTS: dict[str, str | None] = {
     "invest-a-pulse": None,
     "invest-a-gap-scan": "scan.py",
     "invest-a-pattern-scan": "scan.py",
+    "invest-a-hk": "hk.py",
 }
 
 # ─────────────────────────────────────────────────────────────
