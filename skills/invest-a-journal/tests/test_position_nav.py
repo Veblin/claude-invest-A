@@ -76,6 +76,26 @@ def test_show_symbol_not_in_holdings_skips_nav(tmp_path, monkeypatch, capsys):
     assert "持仓位置导航参考（三隔离" not in out
 
 
+def test_show_symbol_case_insensitive_match(tmp_path, monkeypatch, capsys):
+    """journal DB 入库即 upper()；holdings 小写也应匹配（R4b 修复）。"""
+    from unittest.mock import patch
+    from lib import collector as col
+
+    entry = _fake_entry(symbol="SH600176")   # db 侧规范化形态
+    monkeypatch.setattr(journal, "get_journal", lambda jid: entry)
+    holdings = tmp_path / "h.json"
+    holdings.write_text(json.dumps([{"symbol": "sh600176", "weight": 1.0}]), encoding="utf-8")
+    with patch.object(col, "collect_kline", return_value={
+        "dimension": "kline", "data": [{"trade_date": "2026-09-04", "close": 20.0}],
+        "status": "available",
+    }):
+        rc = journal.cmd_show(1, portfolio=str(holdings))
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "持仓位置导航参考" in out
+    assert "跳过位置导航参考" not in out
+
+
 def test_show_broken_holdings_file_no_crash(tmp_path, capsys):
     missing = tmp_path / "nope.json"
     rc = journal.cmd_show(1, portfolio=str(missing))

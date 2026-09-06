@@ -61,7 +61,12 @@ def _print_position_nav(symbol: str, holdings_path: str) -> None:
     if not isinstance(data, list):
         print("⚠️ holdings.json 须为数组，跳过位置导航参考")
         return
-    match = next((h for h in data if str(h.get("symbol", "")).strip() == symbol), None)
+    # journal DB 入库即 upper()（db.py），holdings 可能小写——双侧归一后匹配
+    sym_key = symbol.strip().upper()
+    match = next(
+        (h for h in data if str(h.get("symbol", "")).strip().upper() == sym_key),
+        None,
+    )
     if match is None:
         print("⚠️ 该标的不在 holdings.json，跳过位置导航参考")
         return

@@ -1798,13 +1798,26 @@ def cmd_attribution(args: argparse.Namespace) -> int:
         print("⚠️ 实时归因暂不可用：K 线为统一前复权，不复权收盘与历史股本无公开数据通道（LAW 5 三态：不可得）。")
         print("请以 --snapshot PATH 提供端点快照（总市值 + 当时可见 TTM 归母净利，口径见调研 v-domain-attribution-methodology §3）。")
         return 1
-    snap = json.loads(Path(args.snapshot).read_text(encoding="utf-8"))
-    d = decompose_move(
-        start_price_ratio=1.0,
-        end_price_ratio=snap["end_mcap"] / snap["start_mcap"],
-        start_eps=snap["start_np_ttm_visible"],
-        end_eps=snap["end_np_ttm_visible"],
-    )
+    try:
+        snap = json.loads(Path(args.snapshot).read_text(encoding="utf-8"))
+        d = decompose_move(
+            start_price_ratio=1.0,
+            end_price_ratio=snap["end_mcap"] / snap["start_mcap"],
+            start_eps=snap["start_np_ttm_visible"],
+            end_eps=snap["end_np_ttm_visible"],
+        )
+    except json.JSONDecodeError as exc:
+        print(f"⚠️ 快照 JSON 解析失败：{exc}")
+        return 1
+    except (KeyError, TypeError) as exc:
+        print(f"⚠️ 快照缺必需字段：{exc}（需要 start_mcap/end_mcap/start_np_ttm_visible/end_np_ttm_visible）")
+        return 1
+    except ZeroDivisionError:
+        print("⚠️ 快照 start_mcap 为 0，市值比无法计算")
+        return 1
+    except OSError as exc:
+        print(f"⚠️ 快照文件读取失败：{exc}")
+        return 1
     if "error" in d:
         print(f"⚠️ {d['error']}")
         return 1

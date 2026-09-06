@@ -117,6 +117,40 @@ def test_cmd_attribution_no_snapshot_degrades(capsys):
     assert "不可得" in out
 
 
+def test_cmd_attribution_bad_snapshot_no_crash(tmp_path, capsys):
+    """V-1：快照损坏/缺键/除零 → 友好报错 exit 1，不裸 traceback。"""
+    import argparse
+
+    import invest
+
+    broken = tmp_path / "broken.json"
+    broken.write_text("not json", encoding="utf-8")
+    rc = invest.cmd_attribution(argparse.Namespace(
+        symbol="300750", snapshot=str(broken), start=None, end=None,
+    ))
+    out = capsys.readouterr().out
+    assert rc == 1 and "JSON 解析失败" in out
+
+    missing = tmp_path / "missing.json"
+    missing.write_text('{"start_mcap": 0}', encoding="utf-8")
+    rc = invest.cmd_attribution(argparse.Namespace(
+        symbol="300750", snapshot=str(missing), start=None, end=None,
+    ))
+    out = capsys.readouterr().out
+    assert rc == 1 and "缺必需字段" in out
+
+    zerodiv = tmp_path / "zerodiv.json"
+    zerodiv.write_text(
+        '{"start_mcap": 0, "end_mcap": 1, "start_np_ttm_visible": 1, "end_np_ttm_visible": 2}',
+        encoding="utf-8",
+    )
+    rc = invest.cmd_attribution(argparse.Namespace(
+        symbol="300750", snapshot=str(zerodiv), start=None, end=None,
+    ))
+    out = capsys.readouterr().out
+    assert rc == 1 and "start_mcap 为 0" in out
+
+
 def test_cmd_portfolio_positions_prints_state_table(tmp_path, monkeypatch, capsys):
     """P-1：--positions 输出位置状态表（档位无盈亏数值、无成本数字）。"""
     import argparse

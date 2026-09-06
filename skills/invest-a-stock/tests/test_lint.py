@@ -430,6 +430,7 @@ class TestP3CostAnchorGuardrail:
         ("回到成本就卖", "p3-cost-anchor-l0"),
         ("等回本再说", "p3-cost-anchor-l0"),
         ("赚够了走人", "p3-cost-anchor-threshold"),
+        ("涨到 30% 就走人", "p3-cost-anchor-threshold"),
     ]
 
     _NEG = [
@@ -438,6 +439,7 @@ class TestP3CostAnchorGuardrail:
         "该策略的成本优势来自规模效应",        # 无关语境
         "跌破均线后按计划止损",              # 市场结构参考点（白名单语义）
         "先做假设检查，不等回本（P-3）",       # 护栏自身词汇（规则内指令，不自触发）
+        "买入成本 10 元，现在 15 元",         # 成本事实陈述（无动作）
     ]
 
     def test_p3_positive_lines(self, tmp_path):
