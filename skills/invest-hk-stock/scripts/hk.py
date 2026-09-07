@@ -112,7 +112,7 @@ def cmd_diagnose(args: argparse.Namespace) -> int:
     _start = (_dt.date.today() - _dt.timedelta(days=45)).strftime("%Y%m%d")
     try:
         d = hk_tushare.fetch_daily_kline(sym, start_date=_start, end_date=_end)
-        note = f"（最新 {d[0]['trade_date']}" if d else "（间歇性空返回——2026-09-06 实测首调成功、同参重调 0 行，疑限频/权限抖动，作交叉源使用时以非空为准"
+        note = f"（最新 {d[0]['trade_date']}" if d else "（空返回——2026-09-07 原始 HTTP 实锤 code 40203 硬限频 1 次/分钟：60s 内已调过则必空，非权限/数据问题；作交叉源以非空为准"
         print(f"{'✅' if d else '⚠️'} tushare hk_daily {len(d)} 行 {note}）")
     except Exception as exc:
         ok = False
