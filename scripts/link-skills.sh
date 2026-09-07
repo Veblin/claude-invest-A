@@ -23,7 +23,7 @@ SKILLS=(
     invest-a-pulse
     invest-a-gap-scan
     invest-a-pattern-scan
-    invest-a-hk
+    invest-hk-stock
 )
 
 mkdir -p "$LINK_DIR"

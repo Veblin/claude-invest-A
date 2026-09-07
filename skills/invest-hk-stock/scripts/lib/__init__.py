@@ -1,4 +1,4 @@
-"""invest-a-hk 引擎 lib（v0.2.9 港股数据引入 v1）。
+"""invest-hk-stock 引擎 lib（v0.2.9 港股数据引入 v1）。
 
 隔离纪律（同 etf/journal conftest 注释）：本目录不建 `lib` 子包、数据模块用顶层
 命名（hk_*.py），`lib` 一词保留给 invest-a-stock/scripts/lib —— 防止跨 skill 同进程

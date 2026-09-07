@@ -1,4 +1,4 @@
-"""invest-a-hk path shim（照抄 journal/etf 版：只转发 skills/lib 与 invest-a-stock scripts）。"""
+"""invest-hk-stock path shim（照抄 journal/etf 版：只转发 skills/lib 与 invest-a-stock scripts）。"""
 from __future__ import annotations
 
 import sys
@@ -8,7 +8,7 @@ _LIB = Path(__file__).resolve().parent          # .../scripts/lib
 if str(_LIB) not in sys.path:
     sys.path.insert(0, str(_LIB))
 
-# _LIB.parents: [0]=invest-a-hk/scripts [1]=invest-a-hk [2]=skills [3]=code
+# _LIB.parents: [0]=invest-hk-stock/scripts [1]=invest-hk-stock [2]=skills [3]=code
 _SKILLS_LIB = _LIB.parents[2] / "lib"           # skills/lib
 if str(_SKILLS_LIB) not in sys.path:
     sys.path.insert(0, str(_SKILLS_LIB))

@@ -1,4 +1,4 @@
-"""invest-a-hk 测试配置：只插 skills/lib + 自身 scripts/lib。
+"""invest-hk-stock 测试配置：只插 skills/lib + 自身 scripts/lib。
 
 隔离纪律（三铁律，同 etf/journal conftest 注释）：**不插 scripts/ 根目录**，
 避免 `import lib` 抢先命中本 skill —— `lib` 包保留给 invest-a-stock。

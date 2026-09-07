@@ -1,5 +1,5 @@
 ---
-name: invest-a-hk
+name: invest-hk-stock
 version: "0.2.8"
 description: 港股数据引入与初步分析（v1）——腾讯 r_hk 快照 / 腾讯 qfq K 线 / 东财港股财务 / 百度估值历史序列。研究工具，非决策工具。
 whenToUse: 港股标的（00700/01211 等 5 位代码）的快照、估值位置、财务摘要、技术结构与港股风险层初筛
@@ -13,7 +13,7 @@ metadata:
     - TUSHARE_TOKEN
 ---
 
-# invest-a-hk — 港股数据引入与初步分析
+# invest-hk-stock — 港股数据引入与初步分析
 
 > **工具约束说明**：frontmatter 的 `allowed-tools` 是 Claude Code 约定；在 DSH 等不读取该字段的 harness 下不生效，实际可用工具由平台自身沙箱控制。本技能主体操作为本地数据采集与计算（`uv run python` CLI）。
 
@@ -29,9 +29,9 @@ metadata:
 
 ```bash
 cd "${INVEST_SKILLS_ROOT:-.}"
-uv run python skills/invest-a-hk/scripts/hk.py diagnose [00700]   # 数据源连通性
-uv run python skills/invest-a-hk/scripts/hk.py snapshot 00700     # 实时快照（腾讯 r_hk）
-uv run python skills/invest-a-hk/scripts/hk.py report 00700       # 初步分析 → reports/{code}-{name}/{ts}.md
+uv run python skills/invest-hk-stock/scripts/hk.py diagnose [00700]   # 数据源连通性
+uv run python skills/invest-hk-stock/scripts/hk.py snapshot 00700     # 实时快照（腾讯 r_hk）
+uv run python skills/invest-hk-stock/scripts/hk.py report 00700       # 初步分析 → reports/{code}-{name}/{ts}.md
 ```
 
 ## 腾讯 r_hk 字段（2026-09-06 实测定稿，勿按社区整理修改）

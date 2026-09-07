@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""invest-a-hk CLI — 港股数据引入与初步分析（v0.2.9 v1；完整九模块功能归 0.3.0）。
+"""invest-hk-stock CLI — 港股数据引入与初步分析（v0.2.9 v1；完整九模块功能归 0.3.0）。
 
 子命令：
   diagnose               数据源连通性（腾讯 r_hk / 腾讯 K 线 / 东财财务 / 百度估值）
@@ -10,7 +10,7 @@
 （财务指标，需直连上下文）｜百度股市通（估值历史序列，末值滞后注记）。
 币种纪律：一切价格/财务均为 HKD（报表用 CNY 的公司显式标注）。
 
-运行：cd code && uv run python skills/invest-a-hk/scripts/hk.py <子命令> <代码>
+运行：cd code && uv run python skills/invest-hk-stock/scripts/hk.py <子命令> <代码>
 """
 from __future__ import annotations
 
@@ -68,7 +68,7 @@ def _now_shanghai() -> str:
 
 def cmd_diagnose(args: argparse.Namespace) -> int:
     sym = args.symbol or "00700"
-    print(f"# invest-a-hk diagnose — 数据源连通性（标的 {sym}）\n")
+    print(f"# invest-hk-stock diagnose — 数据源连通性（标的 {sym}）\n")
     ok = True
 
     try:
@@ -321,7 +321,7 @@ def cmd_report(args: argparse.Namespace) -> int:
     lines.append("- 财务口径（HKFRS vs CAS）跨市场对比须折算与准则注记")
     lines.append("- 南向资金/CCASS 持仓/沽空数据：公开可查但 v0.2.9 未接入（0.3.0 范围）")
     lines.append("- 交易日历完整化（台风/圣诞休市）归 0.3.0；当前以自然日近似\n")
-    lines.append("\n> ⚠️ 本报告由 invest-a-hk v0.2.9 自动生成，为初步数据引入分析（非九模块完整研究），")
+    lines.append("\n> ⚠️ 本报告由 invest-hk-stock v0.2.9 自动生成，为初步数据引入分析（非九模块完整研究），")
     lines.append("> 不构成任何投资建议。数据来源见各行 [来源: ...]；币种 HKD（另注除外）。")
 
     body = "\n".join(lines)
@@ -405,7 +405,7 @@ def _write_report(args, code: str, name: str, body: str) -> Path:
 # ---------------------------------------------------------------------------
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="invest-a-hk — 港股数据引入与初步分析（v0.2.9 v1）")
+    p = argparse.ArgumentParser(description="invest-hk-stock — 港股数据引入与初步分析（v0.2.9 v1）")
     sub = p.add_subparsers(dest="command", required=True)
 
     pd = sub.add_parser("diagnose", help="数据源连通性诊断")
