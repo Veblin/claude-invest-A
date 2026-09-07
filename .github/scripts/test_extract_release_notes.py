@@ -127,7 +127,7 @@ def test_condense_section_drops_details():
 
 
 def test_condensed_current_version_notes():
-    """当前版本（v0.2.8）默认输出精简正文：引言 + 主要修改清单，无深层细节。"""
+    """当前版本（v0.2.9）默认输出精简正文：引言 + 主要修改清单，无深层细节。"""
     out = subprocess.check_output(
         [sys.executable, str(SCRIPT), "--from-pyproject"],
         text=True,
@@ -135,10 +135,10 @@ def test_condensed_current_version_notes():
     )
     tag = f"v{_current_version()}"
     assert f"## {tag}" in out
-    assert "报告内容质量门禁（A 域）" in out  # 引言
-    assert "- 图表（B 域，ECharts 6.1.0）" in out  # ### 标题即主要修改
-    assert "- WorkBuddy / 工程" in out
-    assert "K 线红涨绿跌" not in out  # 深层细节已精简
+    assert "拍卖机制观" in out  # 引言
+    assert "- 持仓位置参考层（P 域）" in out  # ### 标题即主要修改
+    assert "- 质量与工程" in out
+    assert "Frydman" not in out  # 深层细节已精简
     assert "**Full Changelog**" in out
     assert "CHANGELOG.md" in out
 
@@ -150,7 +150,7 @@ def test_full_flag_keeps_full_section():
         text=True,
         cwd=ROOT,
     )
-    assert "图表三件套" in out  # ### 小节正文细节
+    assert "Frydman & Wang 2020" in out  # ### 小节正文细节
     assert "### " in out
 
 
