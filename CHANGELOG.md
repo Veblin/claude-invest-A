@@ -1,5 +1,37 @@
 # Changelog — invest skills
 
+## v0.2.9 (2026-09-07)
+
+v0.2.9 完成持仓位置参考层（P 域：P-1 位置卡 / P-2 三隔离合成参考 / P-3 成本锚定护栏）与叙事定价工具箱（V 域：V-1 归因分解 CLI / V-2 隐含叙事敏感性带）——从 2026-09-03 方法论会话（拍卖机制观 / 宁德归因分解 / 持仓位置导航）收敛的需求基线；同版本引入港股数据源与初步分析新 skill（invest-hk-stock v1）。实现经 code-review max 三轮（15 + 14 + round3 #3-#13 findings 全处置）+ 主会话自审 8 风险面，回归 1842 passed / 12 skipped（stock + journal + hk 三套件）。
+
+### 持仓位置参考层（P 域）
+
+- **P-1 持仓位置卡**：holdings.json schema 扩展（cost/buy_date/name/shares 可选字段 + 严格校验）；新 `lib/positions.py` 纯状态模块——四档位（深亏 ≤-20% / 浅亏 / 浮盈 / 浮盈厚 >+30%），**成本只作计算输入、永不进入输出行**（成本字段显著性即处置效应放大器，Frydman & Wang 2020）；`portfolio <json> --positions` CLI 输出位置状态表（档位/持有天数/占比，无建议语）
+- **P-2 三隔离合成参考**（journal 触发，D-3=A）：`journal show <id> --portfolio holdings.json` 渲染位置卡 × 结构卡导航参考——分栏并置互不推导，位置信息不参与结构结论、结构结论不引用成本/浮盈；if-then 框架文本（浮盈厚+结构完好→卖出评估四问 / 深亏→先假设检查不等回本 / thesis 超期→thesis --update），决策权在用户（LAW 6/6a）
+- **P-3 成本锚定护栏**：compliance_rules.yaml 新 p3- 规则组（L0 词面「回本/成本线/赚够了」error + L1 段落共现「账户盈亏为动作理由」warning），lint.py 零改动；负向 lookahead 防护栏自身词汇自触发；code-review 补强否定语境 skip（不要/不必等回本）、阈值间隔组、纯名词语境豁免
+
+### 叙事定价工具箱（V 域）
+
+- **V-1 价格归因分解 CLI**（`invest.py attribution`）：乘法恒等式 (1+r_p) = (1+g_E)(1+g_M)，市值口径（不复权收盘 × 当时总股本，消除送转对分解的污染）+ 当时可见 TTM 归母净利（披露日判定）+ 恒等式机器校验行 + LAW 6 免责；`--snapshot` 离线优先、实时模式显式降级（raw 不复权通道缺失，LAW 5 三态标注）；V-4 宁德 2021-2023 fixture 入库防回归（市值口径股价 ≈ -48% = 盈利 +177% × 估值 -81%~-88%；文书 -61%/-86% 勘误为前复权污染）
+- **V-2 隐含叙事标准输出**：`implied_growth` 新增 r±1pp 敏感性带（sensitivity 可选键，键只增不改 BC 零破坏）；报告 D-③ 渲染带行 + r 口径披露（10Y 无风险利率 + ERP）——「无 r 假设的单一 g* 不进报告」
+
+### 港股数据引入（invest-hk-stock v1，新 skill）
+
+- **数据层**：codes 路由 / 腾讯 r_hk 快照 / 前复权 K 线 / 东财港股财务 / 百度估值历史序列；快照/report/diagnose 三源 CLI + tushare hk_basic/hk_daily + yfinance 接入；注册矩阵（SKILL.md / 口径备忘 / source-guide 港股节 / 四 manifest / DSH 发现路径 symlink）
+- **审查修复**：`_self_yoy` 上年同期错位（相邻行中报 vs 年报 → 同月日匹配）；东财百分数误×100（改原值透传）；snapshot/report None 裸崩（LAW 5 三态生效）；diagnose 分级（硬故障 vs 已知降级）；上海时区（_today/文件名）；hk_daily 动态窗口；hk_daily 限频表述修正（40203 实测 1 次/分钟）；`invest-a-hk` 重命名为 `invest-hk-stock`
+
+### ETF 修复
+
+- invest-a-etf：516160 指数 PE 映射 + 估值节/NAV 图渲染修正
+
+### 质量与工程
+
+- code-review max 三轮全处置：A 输入卫生（NaN 穿透 / buy_date 语义校验 / weight 渲染归一 / symbol 前缀归一 / 同 symbol 多批次 / 停牌现价陈旧注记）、B 规则误报（L0 收窄 + 否定语境 skip + 技术位豁免）、C 渲染一致性（r±1pp 带与 D-③ 同源 / 默认猜测 r 不渲染精确带）；round2 港股 7 项 + A 股侧 6 项（含 P-3 skip 扩展、Infinity 守卫、attribution symbol 绑定、load_holdings 职责迁移）；round3 #3-#13
+- 主会话自审 8 风险面（load_holdings 严格化唯一调用者核实 / positions 裸 except / P-3 正则现场探测补强 / cmd_show 大小写归一 / cmd_attribution 异常面 / 渲染键恒存在）
+- 回归 **1842 passed / 12 skipped**（invest-a-stock + invest-a-journal + invest-hk-stock 三套件实测）；版本 0.2.9 一致性 check 通过
+
+> 注：需求验收对照缺口显式记录——① V-1 实时分解降级为快照优先；② V-2 g_implied 历史序列顺延（当前值 + r±1pp 带已实现）；③ P-1 验收形态 `portfolio positions` 子命令实现为 `--positions` flag（功能等价）。P-4 / E / M / Q 域按 D-4=B 裁决顺延下版本。
+
 ## v0.2.8 (2026-09-03)
 
 v0.2.8 完成报告内容质量门禁（A 域）、可交互单文件 HTML 报告（B 域：ECharts 6.1.0 图表三件套 + 打印/无障碍/安全/合规）与 WorkBuddy 发布包 HTML 支持。渲染层经 code-review max 全量修复 21 条确认级 findings（B3-R），注入面五类系统加固（T4-1），产出流程落盘约定统一（T5-1），数据新鲜度审计修复开盘前快照日期误标（2026-09-02 误报事故根因）。

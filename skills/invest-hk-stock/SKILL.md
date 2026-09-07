@@ -1,6 +1,6 @@
 ---
 name: invest-hk-stock
-version: "0.2.8"
+version: "0.2.9"
 description: 港股数据引入与初步分析（v1）——腾讯 r_hk 快照 / 腾讯 qfq K 线 / 东财港股财务 / 百度估值历史序列。研究工具，非决策工具。
 whenToUse: 港股标的（00700/01211 等 5 位代码）的快照、估值位置、财务摘要、技术结构与港股风险层初筛
 argument-hint: "00700 | 01211"
