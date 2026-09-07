@@ -618,10 +618,17 @@ def _section_valuation(profile: dict) -> str:
     status = profile.get("index_pe_status")
     vg = profile.get("valuation_guide") or {}
     pe_str = _fmt(pe) if pe is not None else "—"
-    pct_str = _fmt(pct, 1) if pct is not None else "0"
+    # 渲染纪律（2026-09-07 review）：分位不可得/积累中/PE 不可得时禁用
+    # 「0% 红色低分位」假象——pct=None 不渲染数值与颜色，只留中性占位文案
     pct_val = safe_float(pct)
+    if pe is None:
+        pct_str, gauge_color = "不可得", "var(--c1)"  # 文本占位不带 %（模板 {pct_str}）
+    elif pct_val is None:
+        pct_str, gauge_color = "积累中", "var(--c1)"
+    else:
+        pct_str = _fmt(pct_val, 1) + "%"
+        gauge_color = "var(--rise)" if pct_val > 80 else ("var(--fall)" if pct_val < 20 else "var(--c1)")
     width = max(0.0, min(100.0, pct_val)) if pct_val is not None else 0.0
-    gauge_color = "var(--rise)" if (pct_val or 0) > 80 else ("var(--fall)" if (pct_val or 0) < 20 else "var(--c1)")
     status_cls = "b-ok" if status == "mapped" else "b-wn"
 
     primary = vg.get("primary") if isinstance(vg, dict) else None
@@ -636,14 +643,17 @@ def _section_valuation(profile: dict) -> str:
                       f'<tr><td>次要指标</td><td>{_esc(secondary)}</td></tr>'
                       f'<tr><td>PE 可用于择时</td><td>{_esc(timing_text)}</td></tr>')
 
+    hint = ("分位越低代表估值越低（相对引擎历史累积窗口；累积长度有限，参考性弱于长历史序列）"
+            if pe is not None else
+            "该 ETF 未配置 csindex 指数映射或拉取失败——PE 与分位均不可得，勿以空值作低分位解读")
     return f'''<section id="valuation">
   <div class="sh"><span class="st">指数估值</span><div class="sd"></div><span class="ss">csindex PE · 引擎累积分位（非长历史）</span></div>
   <div class="card">
-    <div style="font-size:var(--text-xs);color:var(--tx-f);margin-bottom:var(--space-4)">分位越低代表估值越低（相对引擎历史累积窗口；累积长度有限，参考性弱于长历史序列）</div>
+    <div style="font-size:var(--text-xs);color:var(--tx-f);margin-bottom:var(--space-4)">{hint}</div>
     <div class="gr">
       <div class="gn">指数 PE</div>
       <div class="gtrack"><div class="gfill" style="width:{width:.1f}%;background:{gauge_color}"><div class="gmk" style="background:{gauge_color}"></div></div></div>
-      <div class="gval">{pe_str}</div><div class="gpct" style="color:{gauge_color}">{pct_str}%</div>
+      <div class="gval">{pe_str}</div><div class="gpct" style="color:{gauge_color}">{pct_str}</div>
     </div>
     <div style="margin-top:var(--space-3)">
       {_badge("index_pe_status: " + str(status), status_cls)}
@@ -718,14 +728,20 @@ def _section_holdings(holdings: dict) -> str:
 </section>'''
 
 
-def _section_quality(kline: dict, profile: dict) -> str:
+def _section_quality(kline: dict, profile: dict, history: dict | None = None) -> str:
     tracking_note = profile.get("tracking_error_note") or kline.get("_error")
     adj = kline.get("adj_applied")
     adj_note = kline.get("adj_note")
+    # 渲染修正（2026-09-07 review）：navChart 实际绘制 report.history.history.rows
+    # （全年），非 kline.nav_rows（指标计算窗口 ~73 日）——标题行数须与绘制
+    # 数据同源，否则「近 73 日」误导为数据只有 3.5 个月
+    hist_rows = (history or {}).get("history", {}).get("rows") or []
+    nav_caption = (f"近 {_fmt(len(hist_rows), 0)} 交易日 NAV 序列（history 链路）"
+                   if hist_rows else "NAV 序列（history 链路数据不可得）")
     return f'''<section id="quality">
   <div class="sh"><span class="st">跟踪质量</span><div class="sd"></div><span class="ss">NAV {_fmt(kline.get("latest_nav"), 3)} @ {_esc(kline.get("latest_nav_date", ""))}</span></div>
   <div class="card">
-    <div style="font-size:var(--text-sm);font-weight:600;margin-bottom:var(--space-3)">近 {_fmt(kline.get("nav_rows"), 0)} 交易日 NAV 序列（history 链路）</div>
+    <div style="font-size:var(--text-sm);font-weight:600;margin-bottom:var(--space-3)">{nav_caption}</div>
     <div class="cw"><canvas id="navChart"></canvas></div>
     <div class="vnote"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>NAV 直接引用引擎序列；引擎未输出 MA 序列故不绘制均线（渲染层不重算）。</div>
   </div>
@@ -1127,7 +1143,7 @@ def render_etf_html(payload: dict[str, Any], *, md_text: str | None = None) -> s
         _section_overview(profile, quote, kline),
         _section_valuation(profile),
         _section_holdings(payload.get("holdings") or {"available": False, "note": "持仓数据未采集（可运行 etf.py holdings）"}),
-        _section_quality(kline, profile),
+        _section_quality(kline, profile, history),
         _section_history(history, events, playbook),
         _section_flows(payload.get("sector_flow") or {"available": False, "notes": []},
                        payload.get("peers") or {"available": False, "notes": []},

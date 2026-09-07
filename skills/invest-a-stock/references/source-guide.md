@@ -143,3 +143,16 @@ L3 为 fallback，可信度标注 ❓ 弱，推测须标 `[推测，待验证]`�
 > v0.1.4 起 `collect_research()` 按此表顺序降级（高阶成功则跳过低阶 API）：`report_rc(10000) → forecast(2000) → akshare → 跳过`。
 > 默认 `collect`/`report` **不**包含 `research` 维度；需显式 `--dims=...,research`。
 > 完整对照见项目根目录 [CONFIGURATION.md](../../../CONFIGURATION.md)。
+
+## 港股数据源（invest-hk-stock，v0.2.9 v1）
+
+| 源 | 接口 | 单位/口径 | 状态（2026-09-06 实测） |
+|---|---|---|---|
+| 腾讯实时 | `qt.gtimg.cn/q=r_hk00700` | HKD；量=股；额=元；市值亿 HKD | ✅（r_hk 字段下标实测见 invest-hk-stock/SKILL.md） |
+| 腾讯日 K | `ifzq.gtimg.cn/appstock/app/fqkline/get?param=hk00700,day,,,N,qfq` | qfq 累计因子系，行序 date/open/close/high/low/vol | ✅ |
+| 东财港股财务 | `stock_financial_hk_analysis_indicator_em` | 需 akshare_direct_session 直连（datacenter 域）；YOY 列含异常占位值→同比自算 | ✅（push2his 域不可达但不依赖） |
+| 百度估值序列 | `stock_hk_valuation_baidu` | PE-TTM/PB 日序列；末值滞后数日 | ✅（分位注记滞后） |
+| tushare hk_* | hk_basic/hk_daily | 需 2000 积分档 | 未接入（0.3 候选） |
+
+**代理规则**：东财/腾讯港股域名与 A 股同批 DIRECT（eastmoney.com/gtimg.cn 已在 CLASH_DIRECT_RULES）；若未来接 Yahoo（yfinance）港股，**应走代理**（境外源，方向相反）。
+**币种**：东财港股财务 CURRENCY 字段对 A+H 公司不可靠（比亚迪 H 实测数字为 CNY 报表值但字段标 HKD）——跨币换算前核对年报。

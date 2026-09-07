@@ -1,7 +1,7 @@
 ---
 
 name: invest-a-journal
-version: "0.2.8"
+version: "0.2.9"
 description: "交易日志 v2 — Claude 驱动四维评估（逻辑/盲点/仓位匹配/风险收益）+ 数据引擎；ETF 路径调用 invest-a-etf 共用模块。研究工具，非决策工具。触发词：交易日志/买入/卖出评估"
 whenToUse: "交易日志/买入/卖出评估：对既有交易方案做逻辑、盲点、仓位匹配、风险收益四维检查"
 argument-hint: "/invest-a-journal → 买入/卖出 → ETF/个股 → Q&A → 评估"
@@ -12,7 +12,7 @@ metadata:
     bins: [uv, python3]
 ---
 
-# invest-a-journal v0.2.8
+# invest-a-journal v0.2.9
 
 > **工具约束说明**：frontmatter 的 `allowed-tools` 是 Claude Code 约定；在 DSH 等不读取该字段的 harness 下不生效，实际可用工具由平台自身沙箱控制。本技能全部操作均为本地数据采集与计算，仅依赖 Bash 与 Python 运行环境。
 
@@ -135,7 +135,7 @@ metadata:
 每个评估输出第一行固定格式：
 
 ```
-🔍 invest-a-journal v0.2.8 · {date} · {环境标签}
+🔍 invest-a-journal v0.2.9 · {date} · {环境标签}
 ```
 
 环境标签从 `market_microstructure.snapshot()` 读取：
@@ -147,7 +147,7 @@ metadata:
 示例：
 
 ```
-🔍 invest-a-journal v0.2.8 · 2026-07-21 · 🧊中性 🌤正常 ⚠️极端亢奋
+🔍 invest-a-journal v0.2.9 · 2026-07-21 · 🧊中性 🌤正常 ⚠️极端亢奋
 ```
 
 ---
@@ -163,7 +163,7 @@ metadata:
 5. ✅ 检查 LAW 9：是否读取并关联了历史日志（标注"无历史"或展示关联）
 6. ✅ 检查 LAW 10：末尾有免责声明
 6b. ✅ 检查 P0 数字铁律：每个数字来自引擎字段或 `[来源: Python calc: formula]`；无 LLM 心算/目视计数/「Python calc 视角」类未实跑标注（共享规范 §2.3 强制行为 5-6）
-7. ✅ 检查 badge：第一行有 `🔍 invest-a-journal v0.2.8` badge
+7. ✅ 检查 badge：第一行有 `🔍 invest-a-journal v0.2.9` badge
 8. ✅ 检查 LAW 5：无仓位/买卖具体数字建议
 9. ✅ 检查 D2：卖出评估包含参考点独立性核对（四问 + 关键问题 + 独立依据）
 
@@ -477,6 +477,42 @@ print(json.dumps(query_etf_data('563300'), ensure_ascii=False, indent=2))
 
 ---
 
+## 持仓位置导航参考（P-2，v0.2.9 起；仅当 --portfolio 提供且标的存在于持仓时渲染）
+
+> 引擎输出：`journal show <id> --portfolio holdings.json`（位置卡 + 导航参考表）。
+> 三隔离：位置卡（纯状态）与结构卡（引擎判断）**分栏并置，互不推导**。
+> 位置信息永不参与结构结论；结构结论永不引用成本/浮盈（P-3 护栏）。
+> 本参考为 if-then 决策框架（检查框架与提示，非操作建议）——LAW 6/6a。
+
+### 位置卡（弱显著：只显档位与天数，不显盈亏数值——显性成本即偏差放大器，Frydman & Wang 2020）
+
+| 字段 | 值 |
+|------|-----|
+| 档位 | {deep_loss 深亏 / loss 浅亏 / gain 浮盈 / gain_thick 浮盈厚 / unknown 位置不可判} |
+| 持有天数 | {n} 天 |
+| 持仓占比 | {pct} |
+
+### 结构卡（引擎同源：引用当前报告/评估的估值分位、thesis 状态、失效触发，此处不重复计算）
+
+- 估值位置：{结构卡结论，来自引擎}
+- thesis 状态：{thesis --status 结论}
+- 失效触发：{已触发/未触发，来自 journal 错误条件}
+
+### 导航参考（if-then 框架——决策权在用户）
+
+| 位置状态 | 结构状态 | 提示（框架性，非建议） |
+|---|---|---|
+| 浮盈厚 + 结构完好 | → 运行卖出评估四问（若考虑退出）——参考点独立性核对优先；或继续持有并 journal 记录理由 |
+| 深亏/浅亏 | → 先做假设检查（journal 错误条件 diff），**不等回本**（P-3） |
+| 任意位置 + thesis 超期 | → thesis --update（论文是否仍成立，与盈亏无关） |
+| 任意位置 + 结构失效触发 | → 失效触发即执行错误条件纪律（LAW 6a——与位置无关的独立依据） |
+
+> 唯一合法使用账户位置的通道（P 域调研 §5.2 边界表）：权重/风险预算（占比过大 →
+> 组合风险维度）、红利税持股期、维保比例、市场结构止损（可独立复算）。
+> 除此之外：**决策理由删去账户历史字段后若不再成立，即为成本锚定伪装**。
+
+---
+
 ## 评估输出模板
 
 > 本评估的卖出路径含四类参考之核对参考（report-conventions §8）。
@@ -490,7 +526,7 @@ print(json.dumps(query_etf_data('563300'), ensure_ascii=False, indent=2))
 > `commitment_level`（结构性承诺>计划性承诺>提醒）。
 
 ```markdown
-🔍 invest-a-journal v0.2.8 · {date} · 🧊{杠杆} 🌤{广度} ⚠️{情绪}
+🔍 invest-a-journal v0.2.9 · {date} · 🧊{杠杆} 🌤{广度} ⚠️{情绪}
 
 ## {方向}: {标的} ({代码}) — {资产类型}
 

@@ -27,6 +27,7 @@ def _write_fixture_tree(root: Path, version: str) -> None:
     (root / "skills" / "invest-a-etf").mkdir(parents=True)
     (root / "skills" / "invest-a-pulse").mkdir(parents=True)
     (root / "skills" / "invest-a-pattern-scan").mkdir(parents=True)
+    (root / "skills" / "invest-hk-stock").mkdir(parents=True)
     (root / ".claude-plugin").mkdir(parents=True)
     (root / ".agents" / "plugins").mkdir(parents=True)
 
@@ -56,6 +57,10 @@ def _write_fixture_tree(root: Path, version: str) -> None:
     )
     (root / "skills" / "invest-a-pattern-scan" / "SKILL.md").write_text(
         f'---\nname: invest:a-pattern-scan\nversion: "{version}"\n---\n',
+        encoding="utf-8",
+    )
+    (root / "skills" / "invest-hk-stock" / "SKILL.md").write_text(
+        f'---\nname: invest:a-hk\nversion: "{version}"\n---\n',
         encoding="utf-8",
     )
 

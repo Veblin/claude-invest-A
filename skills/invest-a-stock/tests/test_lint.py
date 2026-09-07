@@ -418,3 +418,155 @@ class TestFilenameFormatLint:
         filename_findings = [f for f in findings if f.rule_id.startswith("filename-format-")]
         assert len(filename_findings) == 1
         assert filename_findings[0].rule_id == "filename-format-datetime"
+
+
+class TestP3CostAnchorGuardrail:
+    """P-3（v0.2.9）：成本锚定护栏——账户历史字段不得作为决策理由。
+
+    设计依据：p-domain-behavioral-foundations-2026-09-05.md §7（L0 词面/L1 理由连接）。
+    """
+
+    _POS = [
+        ("回到成本就卖", "p3-cost-anchor-threshold"),
+        ("等回本再说", "p3-cost-anchor-l0"),
+        ("赚够了走人", "p3-cost-anchor-threshold"),
+        ("涨到 30% 就走人", "p3-cost-anchor-threshold"),
+        ("回本才走", "p3-cost-anchor-threshold"),
+    ]
+
+    _NEG = [
+        "当前价格高于买入成本分布区间",      # 成本分布 = 筹码结构事实
+        "若盈利路径不及预期、估值回到周期中枢",  # 估值中枢 ≠ 回本
+        "该策略的成本优势来自规模效应",        # 无关语境
+        "跌破均线后按计划止损",              # 市场结构参考点（白名单语义）
+        "先做假设检查，不等回本（P-3）",       # 护栏自身词汇（规则内指令，不自触发）
+        "买入成本 10 元，现在 15 元",         # 成本事实陈述（无动作）
+        "无需等回本再评估，先检查假设是否失效",  # P-3 自身要求的纪律措辞（F6）
+        "价格回到成本线附近，构成支撑区",       # 市场结构技术位描述（F6）
+        "成本线附近有筹码支撑",               # 同上（F6）
+        "| 持仓成本 | 决策理由 | 执行 |",      # markdown 表格行（F10 skip ^\|）
+    ]
+
+    def test_p3_positive_lines(self, tmp_path):
+        from lib import lint as lint_mod
+
+        for text, rule_id in self._POS:
+            report = tmp_path / "report.md"
+            report.write_text(f"# t\n\n{text}\n", encoding="utf-8")
+            lint_mod._RULES_CACHE = None
+            findings = lint_mod.lint_file(report)
+            lint_mod._RULES_CACHE = None
+            assert any(f.rule_id == rule_id for f in findings), f"应命中 {rule_id}: {text}"
+
+    def test_p3_negative_lines(self, tmp_path):
+        from lib import lint as lint_mod
+
+        for text in self._NEG:
+            report = tmp_path / "report.md"
+            report.write_text(f"# t\n\n{text}\n", encoding="utf-8")
+            lint_mod._RULES_CACHE = None
+            findings = lint_mod.lint_file(report)
+            lint_mod._RULES_CACHE = None
+            p3 = [f for f in findings if f.rule_id.startswith("p3-")]
+            assert not p3, f"不应命中 P-3: {text} → {[f.context for f in p3]}"
+
+    def test_p3_l1_reason_connector_line(self, tmp_path):
+        """L1 理由连接层（line scope，F10）：『账户历史字段 → 动作词』同现 → warning。"""
+        from lib import lint as lint_mod
+
+        report = tmp_path / "report.md"
+        report.write_text("亏损超过两成就止损\n", encoding="utf-8")
+        lint_mod._RULES_CACHE = None
+        findings = lint_mod.lint_file(report)
+        lint_mod._RULES_CACHE = None
+        assert any(f.rule_id == "p3-account-history-action" for f in findings)
+
+    def test_p3_meta_mention_not_self_triggered(self, tmp_path):
+        """规则元叙述（'禁止使用'回本''句式）不自触发（同 wording 规则 skip 惯例）。"""
+        from lib import lint as lint_mod
+
+        report = tmp_path / "report.md"
+        report.write_text("风险提示：文中禁止使用'回本'一词。\n", encoding="utf-8")
+        lint_mod._RULES_CACHE = None
+        findings = lint_mod.lint_file(report)
+        lint_mod._RULES_CACHE = None
+        p3 = [f for f in findings if f.rule_id.startswith("p3-")]
+        assert not p3, f"元叙述不应命中 P-3: {[f.context for f in p3]}"
+
+
+class TestReview2Guardrail:
+    """code-review max round2：L1 跨行恢复 / 表格豁免 / 否定句 L0。"""
+
+    def test_p3_l1_cross_line_cooccurrence(self, tmp_path):
+        """review2 A-2：浮盈状态一行、动作下一行（近距跨行伪装结构）→ paragraph 命中。"""
+        from lib import lint as lint_mod
+
+        report = tmp_path / "report.md"
+        report.write_text("- 浮盈 20%\n- 止盈卖出\n", encoding="utf-8")
+        lint_mod._RULES_CACHE = None
+        findings = lint_mod.lint_file(report)
+        lint_mod._RULES_CACHE = None
+        assert any(f.rule_id == "p3-account-history-action" for f in findings)
+
+    def test_p3_l1_table_paragraph_skipped(self, tmp_path):
+        """表格段（^\\| 起始）豁免——段落引擎 skip 生效。"""
+        from lib import lint as lint_mod
+
+        report = tmp_path / "report.md"
+        report.write_text("| 项目 | 数值 |\n|---|---|\n| 亏损 | 止损执行 |\n", encoding="utf-8")
+        lint_mod._RULES_CACHE = None
+        findings = lint_mod.lint_file(report)
+        lint_mod._RULES_CACHE = None
+        p3 = [f for f in findings if f.rule_id.startswith("p3-")]
+        assert not p3
+
+    def test_p3_negation_variants_do_not_fire(self, tmp_path):
+        """review2 A-3：不要/不必/不用 等回本 = P-3 纪律措辞 → 不命中 L0 error。"""
+        from lib import lint as lint_mod
+
+        for text in ("不要等回本，先查假设", "不必等回本再评估", "不用等回本，直接看逻辑失效"):
+            report = tmp_path / "r.md"
+            report.write_text(text + "\n", encoding="utf-8")
+            lint_mod._RULES_CACHE = None
+            findings = lint_mod.lint_file(report)
+            lint_mod._RULES_CACHE = None
+            p3 = [f for f in findings if f.rule_id.startswith("p3-")]
+            assert not p3, f"纪律措辞不应命中: {text}"
+
+    def test_p3_back_to_cost_line_action_fires(self, tmp_path):
+        """review2 A-3：回到成本线之后就卖（连接词间隔）→ threshold 命中。"""
+        from lib import lint as lint_mod
+
+        report = tmp_path / "report.md"
+        report.write_text("回到成本线之后就卖\n", encoding="utf-8")
+        lint_mod._RULES_CACHE = None
+        findings = lint_mod.lint_file(report)
+        lint_mod._RULES_CACHE = None
+        assert any(f.rule_id == "p3-cost-anchor-threshold" for f in findings)
+
+    def test_p3_skip_line_does_not_exempt_whole_paragraph(self, tmp_path):
+        """review #9：⚠️ 行只豁免自身行，同段其余行仍参与跨行检测（FN 修复——
+        旧整段豁免使 3 行 bullet 中 1 行带 ⚠️ 即整段失明）。"""
+        from lib import lint as lint_mod
+
+        report = tmp_path / "report.md"
+        report.write_text("- 数据不足，部分指标缺省 ⚠️\n- 本批浮盈 20%\n- 破位止损离场\n",
+                          encoding="utf-8")
+        lint_mod._RULES_CACHE = None
+        findings = lint_mod.lint_file(report)
+        lint_mod._RULES_CACHE = None
+        assert any(f.rule_id == "p3-account-history-action" for f in findings)
+
+    def test_p3_title_plus_table_paragraph_skipped(self, tmp_path):
+        """review #9：标题行 + 表格行同一段（无空行）→ 表格行逐行豁免（FP 修复——
+        旧实现 '^\\|' 只匹配段落首行，标题行开头导致整段不豁免、误报命中）。"""
+        from lib import lint as lint_mod
+
+        report = tmp_path / "report.md"
+        report.write_text("### 持仓表现\n| 亏损比例 | 是否止损 |\n|---|---|\n| 20% | 是 |\n",
+                          encoding="utf-8")
+        lint_mod._RULES_CACHE = None
+        findings = lint_mod.lint_file(report)
+        lint_mod._RULES_CACHE = None
+        p3 = [f for f in findings if f.rule_id.startswith("p3-")]
+        assert not p3

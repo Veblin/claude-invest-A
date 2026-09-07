@@ -201,6 +201,7 @@ def implied_growth(
     pe_ttm: float,
     risk_free_rate: float,
     erp: float = 0.06,
+    sensitivity: bool = False,
 ) -> dict[str, Any]:
     """LAW 15：戈登模型反推市场隐含增长率。
 
@@ -211,9 +212,11 @@ def implied_growth(
         pe_ttm: 当前 PE(TTM)
         risk_free_rate: 无风险利率（如 10Y 国债收益率），小数形式（如 0.03 表示 3%）
         erp: 股权风险溢价，默认 0.06（6%）
+        sensitivity: 为 True 时输出 r±1pp 的 g_implied 带（g_band_down/g_band_up；
+            ∂g*/∂r≈1，无 r 假设的单一 g* 不进报告）
 
     Returns:
-        dict 含 pe, risk_free_rate, erp, r, g_implied, 及可选 warning
+        dict 含 pe, risk_free_rate, erp, r, g_implied, 及可选 warning/error/g_band_*
     """
     if pe_ttm <= 0:
         return {
@@ -236,6 +239,10 @@ def implied_growth(
         "r": round(r, 4),
         "g_implied": round(g_implied, 4),
     }
+
+    if sensitivity:
+        result["g_band_down"] = round(g_implied - 0.01, 4)
+        result["g_band_up"] = round(g_implied + 0.01, 4)
 
     if pe_ttm > 50:
         result["warning"] = (

@@ -61,6 +61,7 @@ PUBLISH_SKILLS = [
     "invest-a-pulse",
     "invest-a-gap-scan",
     "invest-a-pattern-scan",
+    "invest-hk-stock",
 ]
 
 # 包内排除的路径（tests/__pycache__ 等）
@@ -79,6 +80,7 @@ SKILL_META: dict[str, dict[str, str]] = {
     "invest-a-pulse": {"displayName": "invest:a-pulse 市场情绪"},
     "invest-a-gap-scan": {"displayName": "invest:a-gap-scan 缺口扫描"},
     "invest-a-pattern-scan": {"displayName": "invest:a-pattern-scan 形态扫描"},
+    "invest-hk-stock": {"displayName": "invest:a-hk 港股研究"},
 }
 
 # 各 skill 的 CLI 入口脚本（SKILL.md 正文「见 CLAUDE.md」/「子命令全清单」改写目标；
@@ -90,6 +92,7 @@ ENTRY_SCRIPTS: dict[str, str | None] = {
     "invest-a-pulse": None,
     "invest-a-gap-scan": "scan.py",
     "invest-a-pattern-scan": "scan.py",
+    "invest-hk-stock": "hk.py",
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -107,6 +110,7 @@ LAYOUT: dict[str, str] = {
     "invest-a-pulse": "pulse",
     "invest-a-gap-scan": "script",
     "invest-a-pattern-scan": "script",
+    "invest-hk-stock": "script",
 }
 
 # 跨 skill lib 合并源（闭包解析优先级: 共享 skills/lib > cross 列表序 > 包自身 scripts/lib）
@@ -120,6 +124,10 @@ CROSS_LIBS: dict[str, list[str]] = {
     "invest-a-pulse": ["invest-a-journal", "invest-a-stock"],
     "invest-a-gap-scan": ["invest-a-stock"],
     "invest-a-pattern-scan": ["invest-a-gap-scan", "invest-a-stock"],
+    # hk 引擎经 _invest_path 注入从 invest-a-stock lib 解析 lib.proxy（akshare 直连
+    # sessions，hk.py:91/226）与 lib.tushare_client（hk_tushare._client，hk_tushare.py:21）；
+    # 包内无该引导 → 一并闭包并入（technical 由共享 skills/lib 满足，无需计入）
+    "invest-hk-stock": ["invest-a-stock"],
 }
 
 # SKILL.md 正文中的跨 skill 路径改写（包内副本）

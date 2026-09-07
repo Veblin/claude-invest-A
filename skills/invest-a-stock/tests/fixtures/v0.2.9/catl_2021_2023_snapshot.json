@@ -1,0 +1,17 @@
+{
+  "symbol": "300750",
+  "name": "宁德时代",
+  "start_date": "2021-12",
+  "end_date": "2023-12",
+  "start_mcap": 1.0,
+  "end_mcap": 0.523,
+  "start_np_ttm_visible": 99.0,
+  "end_np_ttm_visible": 443.0,
+  "expected": {
+    "g_price": -0.477,
+    "g_earnings": 3.4747
+  },
+  "caliber_notes": "总市值口径（不复权收盘×当时总股本），mcap 存的是区间倍率（调研文档未给绝对市值）；可见 TTM 归母净利（披露日判定），端点数值 99/443 亿为调研演示近似，精确值以 Tushare 快照为准",
+  "legacy_erratum": "需求文书及 2026-09-03 会话的 -61%/-86% 为历史口径（FY 净利 × baostock 前复权价），疑 2023-04 十转八复权污染，作勘误记录",
+  "source_notes": "host-docs/v0.2.9/deep-research/v-domain-attribution-methodology-2026-09-05.md §3.2"
+}

@@ -1230,3 +1230,30 @@ class TestFormatEvEbitdaBlock:
         assert pe["loss_days"] == 14          # NaN 计入亏损/缺失组
         assert pe["loss_ratio"] == round(14 / 20, 4)
         assert pe["n_valid"] == 6             # 正数序列不受影响
+
+
+class TestImpliedGrowthSensitivityBand:
+    """V-2（v0.2.9）：g_implied r±1pp 敏感性带——无 r 假设的单一 g* 不进报告。"""
+
+    def test_sensitivity_band_added_when_requested(self):
+        from lib.valuation import implied_growth
+
+        ig = implied_growth(30.0, 0.025, erp=0.06, sensitivity=True)
+        assert ig["g_implied"] is not None
+        # ∂g*/∂r ≈ 1：g = r - 1/PE，r±1pp ⇒ g 同步 ±1pp
+        assert ig["g_band_down"] == pytest.approx(ig["g_implied"] - 0.01, abs=1e-6)
+        assert ig["g_band_up"] == pytest.approx(ig["g_implied"] + 0.01, abs=1e-6)
+
+    def test_no_band_by_default_keeps_old_shape(self):
+        """BC：默认不新增键 → 既有 4 个生产消费者 + 2 测试文件零破坏。"""
+        from lib.valuation import implied_growth
+
+        ig = implied_growth(30.0, 0.025, erp=0.06)
+        assert "g_band_up" not in ig and "g_band_down" not in ig
+        assert set(ig) >= {"pe", "risk_free_rate", "erp", "r", "g_implied"}
+
+    def test_negative_pe_no_band(self):
+        from lib.valuation import implied_growth
+
+        ig = implied_growth(-5.0, 0.025, erp=0.06, sensitivity=True)
+        assert ig["g_implied"] is None and "g_band_up" not in ig
