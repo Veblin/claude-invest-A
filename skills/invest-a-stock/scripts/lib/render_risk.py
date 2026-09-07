@@ -134,11 +134,14 @@ def _v3_bull_bear_implied_growth(
     if current_pe is not None and current_pe > 0:
         erp_data = market_structure.get("erp") or {}
         risk_free_raw = erp_data.get("dgs10")
-        risk_free = 0.025 if risk_free_raw is None else risk_free_raw / 100.0
+        risk_free_is_default = risk_free_raw is None
+        risk_free = 0.025 if risk_free_is_default else risk_free_raw / 100.0
         from lib.valuation import implied_growth
         # V-2（v0.2.9）policy：与模块 4 D-③ 同源渲染 r±1pp 带（code-review max F9
         # ——5d 曾渲染裸点估计，与 D-③ 的"无 r 假设的单一 g* 不进报告"标准不一致）
         ig = implied_growth(current_pe, risk_free, erp=0.06, sensitivity=True)
+        # review2 A-1：r 为默认猜测（FRED 不可得）时渲染层不得出精确带——同 D-③ F14 规则
+        ig["rf_is_default"] = risk_free_is_default
     fin = _get_dim_data(dims, "financials")
     cagr, np_cagr = None, None
     if fin and isinstance(fin, list):
@@ -671,7 +674,7 @@ def _section_bull_bear(
             f"- 市场隐含增长率 g_implied ≈ **{g_pct:.2f}%**（PE {ig.get('pe')}x，"
             f"r={ig.get('r', 0) * 100:.2f}%）[来源: lib.valuation.implied_growth / 模块 4 D-③]"
         )
-        if "g_band_up" in ig:
+        if "g_band_up" in ig and not ig.get("rf_is_default"):
             lines.append(
                 f"- g_implied 敏感性带（r±1pp）：{ig['g_band_down'] * 100:.2f}% ~ "
                 f"{ig['g_band_up'] * 100:.2f}%（与模块 4 D-③ 同源）"

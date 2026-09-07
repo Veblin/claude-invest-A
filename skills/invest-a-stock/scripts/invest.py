@@ -1800,6 +1800,12 @@ def cmd_attribution(args: argparse.Namespace) -> int:
         return 1
     try:
         snap = json.loads(Path(args.snapshot).read_text(encoding="utf-8"))
+        # review2 A-7：快照内容与命令 symbol 绑定校验——防拷贝错快照后把 A 标的
+        # 分解打印成 B 标的（catl fixture 曾可挂在任意 symbol 下）
+        snap_sym = str(snap.get("symbol") or "").strip()
+        if snap_sym and snap_sym.replace(".SZ", "").replace(".SH", "") != str(args.symbol).strip():
+            print(f"⚠️ 快照 symbol={snap_sym} 与命令标的 {args.symbol} 不符——拒绝输出（防错配）")
+            return 1
         d = decompose_move(
             start_price_ratio=1.0,
             end_price_ratio=snap["end_mcap"] / snap["start_mcap"],

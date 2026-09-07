@@ -492,3 +492,54 @@ class TestP3CostAnchorGuardrail:
         lint_mod._RULES_CACHE = None
         p3 = [f for f in findings if f.rule_id.startswith("p3-")]
         assert not p3, f"元叙述不应命中 P-3: {[f.context for f in p3]}"
+
+
+class TestReview2Guardrail:
+    """code-review max round2：L1 跨行恢复 / 表格豁免 / 否定句 L0。"""
+
+    def test_p3_l1_cross_line_cooccurrence(self, tmp_path):
+        """review2 A-2：浮盈状态一行、动作下一行（近距跨行伪装结构）→ paragraph 命中。"""
+        from lib import lint as lint_mod
+
+        report = tmp_path / "report.md"
+        report.write_text("- 浮盈 20%\n- 止盈卖出\n", encoding="utf-8")
+        lint_mod._RULES_CACHE = None
+        findings = lint_mod.lint_file(report)
+        lint_mod._RULES_CACHE = None
+        assert any(f.rule_id == "p3-account-history-action" for f in findings)
+
+    def test_p3_l1_table_paragraph_skipped(self, tmp_path):
+        """表格段（^\\| 起始）豁免——段落引擎 skip 生效。"""
+        from lib import lint as lint_mod
+
+        report = tmp_path / "report.md"
+        report.write_text("| 项目 | 数值 |\n|---|---|\n| 亏损 | 止损执行 |\n", encoding="utf-8")
+        lint_mod._RULES_CACHE = None
+        findings = lint_mod.lint_file(report)
+        lint_mod._RULES_CACHE = None
+        p3 = [f for f in findings if f.rule_id.startswith("p3-")]
+        assert not p3
+
+    def test_p3_negation_variants_do_not_fire(self, tmp_path):
+        """review2 A-3：不要/不必/不用 等回本 = P-3 纪律措辞 → 不命中 L0 error。"""
+        from lib import lint as lint_mod
+
+        for text in ("不要等回本，先查假设", "不必等回本再评估", "不用等回本，直接看逻辑失效"):
+            report = tmp_path / "r.md"
+            report.write_text(text + "\n", encoding="utf-8")
+            lint_mod._RULES_CACHE = None
+            findings = lint_mod.lint_file(report)
+            lint_mod._RULES_CACHE = None
+            p3 = [f for f in findings if f.rule_id.startswith("p3-")]
+            assert not p3, f"纪律措辞不应命中: {text}"
+
+    def test_p3_back_to_cost_line_action_fires(self, tmp_path):
+        """review2 A-3：回到成本线之后就卖（连接词间隔）→ threshold 命中。"""
+        from lib import lint as lint_mod
+
+        report = tmp_path / "report.md"
+        report.write_text("回到成本线之后就卖\n", encoding="utf-8")
+        lint_mod._RULES_CACHE = None
+        findings = lint_mod.lint_file(report)
+        lint_mod._RULES_CACHE = None
+        assert any(f.rule_id == "p3-cost-anchor-threshold" for f in findings)

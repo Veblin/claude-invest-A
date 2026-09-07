@@ -96,14 +96,55 @@ def build_position_row(*, symbol: str, price: float | None,
     }
 
 
+def _a_share_symbol_ok(sym: str) -> bool:
+    """A 股代码形态校验（review2 A-4/HK-3 防错路由）：6 位纯数字，或带 sh/sz/bj
+    前缀的 6 位（sh600176）。港股 5 位码/字母代码 → False（不得喂 A 股 get_kline——
+    共享 codes.zfill(6) 会把 00700 静默路由到 000700）。"""
+    s = sym.lower()
+    for pre in ("sh", "sz", "bj"):
+        if s.startswith(pre):
+            s = s[len(pre):]
+            break
+    return s.isdigit() and len(s) == 6
+
+
+def _validate_p1_fields(h: dict) -> tuple[dict, str | None]:
+    """P-1 字段语义校验（单行）。返回 (row_input 修正, error_note|None)。
+
+    校验失败 → 返回错误 note（调用方整行降级），**不 raise**——review2 A-4 定稿：
+    load_holdings 已宽容，P-1 语义校验在此逐行执行，坏行降级不阻塞整表。
+    """
+    import math as _math
+
+    sym = str(h.get("symbol", "")).strip()
+    cost = h.get("cost")
+    if cost is not None:
+        if isinstance(cost, bool) or not isinstance(cost, (int, float)):
+            return h, f"cost 非数值（{type(cost).__name__}），本行位置状态不可判"
+        if _math.isnan(cost) or _math.isinf(cost) or cost <= 0:
+            return h, "cost 非正数/NaN/Infinity，本行位置状态不可判"
+    bd = h.get("buy_date")
+    if bd is not None:
+        if not isinstance(bd, str):
+            return h, "buy_date 非字符串，本行持有天数不可判"
+        try:
+            _dt.date.fromisoformat(bd)
+        except ValueError:
+            return h, f"buy_date 非真实日期（{bd}），本行持有天数不可判"
+    return h, None
+
+
 def build_position_rows_from_holdings(holdings: list[dict], today: str | None = None) -> list[dict[str, Any]]:
     """holdings → 位置状态行。现价取最近收盘（K 线统一前复权，仅作位置参考）；
     不可得 → price=None（档位 unknown）。网络失败单标的降级，不阻塞整表。
 
-    code-review max 修复：
+    code-review max 两轮修复：
     - today 默认上海历 shanghai_today()（本地钟 UTC+8 以西 00:00-08:00 差一天）
     - 仅对"有 cost 的行"按 symbol 去重拉取一次 K 线（无 cost 行档位恒 unknown，不拉网络）
-    - 记录现价所属交易日，窗口内停牌（现价陈旧 >3 自然日）时 note 标注，防停牌价渲染笃定档位
+    - 记录现价所属交易日，窗口内停牌（现价陈旧 >3 自然日）时 note 标注
+    - review2 A-4：P-1 字段逐行语义校验，非法行整行降级（note），不 raise 不静默
+    - review2 HK-3：非 A 股 6 位码（港股 5 位等）不拉 A 股 K 线（防 zfill 错路由），
+      仅确认持仓事实
     """
     from ._invest_path import ensure_skills_lib_on_path
     ensure_skills_lib_on_path()
@@ -111,11 +152,16 @@ def build_position_rows_from_holdings(holdings: list[dict], today: str | None = 
     from .shared_dates import shanghai_days_ago as _days_ago, shanghai_today
 
     today = today or shanghai_today()
+    validated: list[tuple[dict, str | None]] = [_validate_p1_fields(h) for h in holdings]
+
     price_by_sym: dict[str, tuple[float | None, str | None]] = {}   # (price, price_date)
     fetch_syms = sorted({
         str(h.get("symbol", "")).strip()
-        for h in holdings
-        if str(h.get("symbol", "")).strip() and h.get("cost") is not None
+        for h, err in validated
+        if err is None
+        and str(h.get("symbol", "")).strip()
+        and h.get("cost") is not None
+        and _a_share_symbol_ok(str(h.get("symbol", "")).strip())
     })
     for sym in fetch_syms:
         price, pdate = None, None
@@ -132,11 +178,28 @@ def build_position_rows_from_holdings(holdings: list[dict], today: str | None = 
         price_by_sym[sym] = (price, pdate)
 
     rows: list[dict[str, Any]] = []
-    for h in holdings:
+    for h, err in validated:
         sym = str(h.get("symbol", "")).strip()
         if not sym:
             continue
+        note_pre = err
+        if err is None and not _a_share_symbol_ok(sym):
+            note_pre = "非 A 股 6 位代码（如港股），本表仅确认持仓事实，档位以相应市场工具为准"
         price, pdate = price_by_sym.get(sym, (None, None))
+        if note_pre:
+            # 校验失败/非 A 股行：绕过 build_position_row（字符串 cost 等会 TypeError），
+            # 直接构造降级行（band unknown，note 说明原因）
+            row = {
+                "symbol": sym,
+                "name": h.get("name"),
+                "weight": h.get("weight"),
+                "pnl_pct": None,
+                "band": "unknown",
+                "holding_days": None,
+                "note": note_pre,
+            }
+            rows.append(row)
+            continue
         row = build_position_row(
             symbol=sym, price=price, cost=h.get("cost"), buy_date=h.get("buy_date"),
             today=today, name=h.get("name"), weight=h.get("weight"),

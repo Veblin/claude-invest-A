@@ -182,3 +182,75 @@ class TestReviewFixes:
                 [{"symbol": "300308", "cost": 150.0}], today="2026-09-06",
             )
         assert "现价截至" in rows[0]["note"]
+
+
+class TestReview2Fixes:
+    """code-review max round2：positions 消费端校验降级 + 港股码防错路由。"""
+
+    def test_string_cost_row_degrades_not_crash(self):
+        """review2 A-4：Excel 字符串 cost 行 → 降级行（band unknown + note），不崩。"""
+        from unittest.mock import patch
+        from lib._invest_path import ensure_skills_lib_on_path
+        ensure_skills_lib_on_path()
+        from lib import collector as col
+        from lib.positions import build_position_rows_from_holdings
+
+        with patch.object(col, "collect_kline", side_effect=AssertionError("不应拉取")):
+            rows = build_position_rows_from_holdings(
+                [{"symbol": "300308", "cost": "150.0", "buy_date": "2025-06-01"}],
+                today="2026-09-06",
+            )
+        assert rows[0]["band"] == "unknown" and rows[0]["pnl_pct"] is None
+        assert "cost 非数值" in rows[0]["note"]
+
+    def test_inf_cost_row_degrades(self):
+        """review2 A-6：cost=1e309（Infinity）→ 降级，不渲染笃定深亏。"""
+        from unittest.mock import patch
+        from lib._invest_path import ensure_skills_lib_on_path
+        ensure_skills_lib_on_path()
+        from lib import collector as col
+        from lib.positions import build_position_rows_from_holdings
+
+        with patch.object(col, "collect_kline", side_effect=AssertionError("不应拉取")):
+            rows = build_position_rows_from_holdings(
+                [{"symbol": "600176", "cost": 1e309}], today="2026-09-06",
+            )
+        assert rows[0]["band"] == "unknown"
+        assert "Infinity" in rows[0]["note"]
+
+    def test_hk_symbol_not_routed_to_a_share_kline(self):
+        """review2 HK-3：港股 5 位码不得喂 A 股 get_kline（zfill 错路由 000700）——
+        仅确认持仓事实 + note。"""
+        from unittest.mock import patch
+        from lib._invest_path import ensure_skills_lib_on_path
+        ensure_skills_lib_on_path()
+        from lib import collector as col
+        from lib.positions import build_position_rows_from_holdings
+
+        with patch.object(col, "collect_kline", side_effect=AssertionError("港股码不得进 A 股采集")) as m:
+            rows = build_position_rows_from_holdings(
+                [{"symbol": "00700", "cost": 400.0}], today="2026-09-06",
+            )
+        m.assert_not_called()
+        assert rows[0]["band"] == "unknown"
+        assert "非 A 股 6 位代码" in rows[0]["note"]
+
+    def test_sh_prefixed_symbol_accepted(self):
+        """带 sh/sz 前缀的 A 股码是合法形态（剥前缀后按 6 位拉取）。"""
+        from unittest.mock import patch
+        from lib._invest_path import ensure_skills_lib_on_path
+        ensure_skills_lib_on_path()
+        from lib import collector as col
+        from lib.positions import build_position_rows_from_holdings
+
+        with patch.object(col, "collect_kline", return_value={
+            "dimension": "kline",
+            "data": [{"trade_date": "2026-09-04", "close": 20.0}],
+            "status": "available",
+        }) as m:
+            rows = build_position_rows_from_holdings(
+                [{"symbol": "sh600176", "cost": 20.0, "buy_date": "2026-01-05"}],
+                today="2026-09-06",
+            )
+        assert m.call_count == 1
+        assert rows[0]["band"] == "loss"     # 现价=成本 → 0% → loss 档？20/20-1=0 → loss

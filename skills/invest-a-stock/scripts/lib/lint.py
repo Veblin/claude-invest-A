@@ -318,9 +318,18 @@ def _lint_paragraph_scope(
     regex = _compile_regex(pattern_str)
     if regex is None:
         return findings
+    # review2 A-2：paragraph scope 补 skip_if_pattern 支持（此前段落引擎不读 skip，
+    # 导致段落规则无法豁免免责/表格段，F10 只能退化为 line scope 丢失跨行检测）。
+    # 向后兼容：无 skip 键的既有段落规则行为不变。
+    skip_regex = (
+        _compile_regex(rule.get("skip_if_pattern", ""))
+        if rule.get("skip_if_pattern") else None
+    )
 
     for para_start, para_lines in paragraphs:
         para_text = " ".join(para_lines)
+        if skip_regex and skip_regex.search(para_text):
+            continue
         if regex.search(para_text):
             # 匹配到段落 → 标记第一行（通用行为）
             findings.append(

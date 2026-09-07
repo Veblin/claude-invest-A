@@ -12,37 +12,18 @@ from .shared_dates import shanghai_days_ago as _days_ago
 
 # P-1（v0.2.9）：holdings 可选位置字段（cost/buy_date 为位置卡输入；name/shares 为展示/计算辅助）
 #
-# 校验分层（code-review max 2026-09-06 修复）：
-# - symbol 必填/未知键检查为 v0.1.9 pass-through 加载器的 BC 破坏（旧文件含
-#   note/target 等字段或空 symbol 行——消费端 review_portfolio 本就 continue 容忍），
-#   已回退宽容；P-1 字段（cost/buy_date）做强校验（类型/正数/非 NaN/真实日期），
-#   语义非法在加载期拒绝，避免消费端裸崩溃。
-import math
-import datetime as _dt
+# 校验分层（code-review max 2026-09-06 两轮修复后定稿）：
+# - load_holdings 为 pass-through 宽容加载（v0.1.9 语义）：纯风险评审/--stress 路径
+#   不消费 P-1 字段，旧文件（字符串 cost/note 字段/缺 symbol 行）必须可加载——
+#   Excel 导出的字符串 cost 曾让 `portfolio --stress` 整体崩溃（review2 A-4）
+# - P-1 字段语义校验（类型/正数/非 NaN/Inf/真实日期）由**消费端 positions** 承担：
+#   build_position_rows_from_holdings 逐行校验，非法行整行降级（note），不崩不静默
 
 
 def load_holdings(path: Path) -> list[dict[str, Any]]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, list):
         raise ValueError("holdings.json 须为 [{symbol, weight}, ...] 数组")
-    for h in data:
-        if not isinstance(h, dict):
-            raise ValueError(f"holdings 项须为 dict，实为 {type(h).__name__}")
-        sym = str(h.get("symbol", "")).strip()
-        cost = h.get("cost")
-        if cost is not None:
-            if isinstance(cost, bool) or not isinstance(cost, (int, float)):
-                raise ValueError(f"{sym or '?'}: cost 须为数值（实为 {type(cost).__name__}）")
-            if math.isnan(cost) or cost <= 0:
-                raise ValueError(f"{sym or '?'}: cost 须为正数（NaN/≤0 拒绝）")
-        bd = h.get("buy_date")
-        if bd is not None:
-            if not isinstance(bd, str):
-                raise ValueError(f"{sym or '?'}: buy_date 须为 YYYY-MM-DD 字符串")
-            try:
-                _dt.date.fromisoformat(bd)
-            except ValueError as exc:
-                raise ValueError(f"{sym or '?'}: buy_date 须为真实日期 YYYY-MM-DD（{exc}）") from exc
     return data
 
 

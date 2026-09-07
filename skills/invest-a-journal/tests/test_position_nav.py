@@ -141,7 +141,7 @@ class TestReviewFixes:
         assert "跳过位置导航参考" not in out
 
     def test_show_invalid_holdings_content_no_crash(self, tmp_path, monkeypatch, capsys):
-        """cost 为字符串（Excel 导出形态）→ load_holdings 校验错误，友好输出不崩（F1）。"""
+        """cost 为字符串（Excel 导出形态）→ 位置卡整行降级（note 说明），不崩（review2 A-4 语义）。"""
         entry = _fake_entry()
         monkeypatch.setattr(journal, "get_journal", lambda jid: entry)
         holdings = tmp_path / "h.json"
@@ -151,7 +151,9 @@ class TestReviewFixes:
         rc = journal.cmd_show(1, portfolio=str(holdings))
         out = capsys.readouterr().out
         assert rc == 0
-        assert "校验失败" in out
+        nav = out.split("持仓位置导航参考")[-1]
+        assert "cost 非数值" in nav          # 降级行注记（宽容加载 + 消费端校验）
+        assert "位置不可判" in nav
         assert "=== 日志 #1 ===" in out       # 正常 show 输出不受影响
 
     def test_show_multi_batch_all_rows_rendered(self, tmp_path, monkeypatch, capsys):

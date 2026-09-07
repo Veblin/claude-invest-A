@@ -248,3 +248,22 @@ def test_cmd_attribution_type_error_message(tmp_path, capsys):
     assert rc == 1
     assert "类型错误" in out
     assert "缺必需字段" not in out        # 不应误导用户去补已存在的键
+
+
+def test_cmd_attribution_rejects_symbol_mismatch(tmp_path, capsys):
+    """review2 A-7：快照 symbol ≠ 命令 symbol → 拒绝（防把宁德分解打印成其他标的）。"""
+    import argparse
+    from pathlib import Path
+
+    import invest
+
+    fixture = (
+        Path(__file__).resolve().parent / "fixtures" / "v0.2.9"
+        / "catl_2021_2023_snapshot.json"
+    )
+    rc = invest.cmd_attribution(argparse.Namespace(
+        symbol="600176", snapshot=str(fixture), start=None, end=None,   # 错配！
+    ))
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "不符" in out and "拒绝" in out
