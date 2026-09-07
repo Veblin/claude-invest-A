@@ -543,3 +543,30 @@ class TestReview2Guardrail:
         findings = lint_mod.lint_file(report)
         lint_mod._RULES_CACHE = None
         assert any(f.rule_id == "p3-cost-anchor-threshold" for f in findings)
+
+    def test_p3_skip_line_does_not_exempt_whole_paragraph(self, tmp_path):
+        """review #9：⚠️ 行只豁免自身行，同段其余行仍参与跨行检测（FN 修复——
+        旧整段豁免使 3 行 bullet 中 1 行带 ⚠️ 即整段失明）。"""
+        from lib import lint as lint_mod
+
+        report = tmp_path / "report.md"
+        report.write_text("- 数据不足，部分指标缺省 ⚠️\n- 本批浮盈 20%\n- 破位止损离场\n",
+                          encoding="utf-8")
+        lint_mod._RULES_CACHE = None
+        findings = lint_mod.lint_file(report)
+        lint_mod._RULES_CACHE = None
+        assert any(f.rule_id == "p3-account-history-action" for f in findings)
+
+    def test_p3_title_plus_table_paragraph_skipped(self, tmp_path):
+        """review #9：标题行 + 表格行同一段（无空行）→ 表格行逐行豁免（FP 修复——
+        旧实现 '^\\|' 只匹配段落首行，标题行开头导致整段不豁免、误报命中）。"""
+        from lib import lint as lint_mod
+
+        report = tmp_path / "report.md"
+        report.write_text("### 持仓表现\n| 亏损比例 | 是否止损 |\n|---|---|\n| 20% | 是 |\n",
+                          encoding="utf-8")
+        lint_mod._RULES_CACHE = None
+        findings = lint_mod.lint_file(report)
+        lint_mod._RULES_CACHE = None
+        p3 = [f for f in findings if f.rule_id.startswith("p3-")]
+        assert not p3

@@ -646,10 +646,17 @@ def _section_bull_bear(
         g_pct = ig["g_implied"] * 100
         direction_bull = "低估" if g_pct > ref_cagr else "合理"
         direction_bear = "透支" if g_pct > ref_cagr else "悲观"
+        # review #13：r 为默认假设（FRED dgs10 不可得）时方向性对比须降级标注——
+        # 与模块 4 D-③（_v3.py:3487-3491）同口径，禁以猜测 r 出未经标注的方向结论
+        r_default_caution = (
+            "（注意：r 为默认假设 2.5% [推测，待验证]，方向性对比仅供参考，"
+            "须先获取真实无风险利率）" if ig.get("rf_is_default") else ""
+        )
         lines.append(
             f"{divergence_count}. **[隐含增长 vs 实际增长]**：Bull 认为 g_implied "
             f"({g_pct:.2f}%) {direction_bull}，未来增长可期；Bear 认为 "
             f"实际{ref_label} {ref_cagr:+.2f}% 无法匹配，定价{direction_bear}。"
+            f"{r_default_caution}"
         )
     # divergence: northbound vs moneyflow (if we haven't hit 2)
     m_v = mf_net
@@ -670,9 +677,12 @@ def _section_bull_bear(
     lines.append("### 5d. 预期差（LAW 15）")
     if ig.get("g_implied") is not None:
         g_pct = ig["g_implied"] * 100
+        # review #13：r 为默认假设时在 label 上标注 [推测，待验证]（对齐 _v3.py rf_label）
+        r_label = (f"{ig.get('r', 0) * 100:.2f}%"
+                   + (" [推测，待验证：FRED/akshare 不可得]" if ig.get("rf_is_default") else ""))
         lines.append(
             f"- 市场隐含增长率 g_implied ≈ **{g_pct:.2f}%**（PE {ig.get('pe')}x，"
-            f"r={ig.get('r', 0) * 100:.2f}%）[来源: lib.valuation.implied_growth / 模块 4 D-③]"
+            f"r={r_label}）[来源: lib.valuation.implied_growth / 模块 4 D-③]"
         )
         if "g_band_up" in ig and not ig.get("rf_is_default"):
             lines.append(
@@ -681,16 +691,18 @@ def _section_bull_bear(
             )
         if ref_cagr is not None and ref_label:
             gap = g_pct - ref_cagr
+            # review #13：默认 r 下 gap 定价方向仅供参考（r 非实测）
+            r_default_note = "（r 为默认假设，方向仅供参考）" if ig.get("rf_is_default") else ""
             if abs(gap) > 5:
                 direction = "偏乐观" if gap > 0 else "偏悲观"
                 lines.append(
                     f"- 与实际{ref_label}（{ref_cagr:+.2f}%）差距 {gap:+.2f}pp，定价{direction}"
-                    f" [来源: financials CAGR vs D-③]"
+                    f" [来源: financials CAGR vs D-③]{r_default_note}"
                 )
             else:
                 lines.append(
                     f"- 与实际{ref_label}（{ref_cagr:+.2f}%）接近，定价大致反映历史增长"
-                    f" [来源: financials CAGR vs D-③]"
+                    f" [来源: financials CAGR vs D-③]{r_default_note}"
                 )
         else:
             lines.append("- 实际 CAGR 不可得，仅呈现 g_implied 供与模块 4 D-③ 对照 [来源: financials 缺口]")

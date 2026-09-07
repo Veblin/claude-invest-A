@@ -125,9 +125,9 @@ class TestPortfolioReview:
         import lib.collector as col
 
         holdings = [
-            {"symbol": "A", "weight": 0.4},
-            {"symbol": "B", "weight": 0.3},
-            {"symbol": "C", "weight": 0.3},
+            {"symbol": "600176", "weight": 0.4},
+            {"symbol": "000858", "weight": 0.3},
+            {"symbol": "600519", "weight": 0.3},
         ]
         with patch.object(col, "collect_basic_info", side_effect=_fake_basic), \
              patch.object(col, "collect_kline", side_effect=_fake_kline):
@@ -135,9 +135,9 @@ class TestPortfolioReview:
 
         assert "matrix" in result["correlation"]
         matrix = result["correlation"]["matrix"]
-        # 3×3 对称矩阵
+        # 3×3 对称矩阵（review #4：符号须为 A 股 6 位码——假字母符号被非 A 股守卫跳过）
         assert len(matrix) == 3
-        for sym in ("A", "B", "C"):
+        for sym in ("600176", "000858", "600519"):
             assert sym in matrix
             assert sym in matrix[sym]
             # 自相关应为 1.0（或接近）
@@ -182,6 +182,37 @@ class TestPortfolioReview:
 
         assert result.get("weight_warning") is None
         assert result["stress"]["-10%"] == -0.1  # scale=1.0
+
+    def test_hk_symbol_not_routed_to_a_share_data(self):
+        """review #4：港股 5 位码不得喂 A 股 get_basic_info/get_kline（共享 codes
+        zfill(6) 会静默路由成 000700）；权重仍计入，行业不纳入，符号列于
+        skipped_non_a_symbols。"""
+        from lib import portfolio_review as pr
+        import lib.collector as col
+
+        def _a_share_only_basic(sym):
+            if sym == "00700":
+                raise AssertionError("港股码不得进 A 股采集")
+            return _fake_basic(sym)
+
+        def _a_share_only_kline(sym, start_date=""):
+            if sym == "00700":
+                raise AssertionError("港股码不得进 A 股采集")
+            return _fake_kline(sym)
+
+        holdings = [
+            {"symbol": "00700", "weight": 0.4},
+            {"symbol": "600176", "weight": 0.6},
+        ]
+        with patch.object(col, "collect_basic_info", side_effect=_a_share_only_basic), \
+             patch.object(col, "collect_kline", side_effect=_a_share_only_kline):
+            result = pr.review_portfolio(holdings, stress=False)
+
+        assert result["skipped_non_a_symbols"] == ["00700"]
+        assert "600176" not in result["skipped_non_a_symbols"]
+        # 行业集中度仅含 A 股符号
+        assert result["industry_concentration"] == [("制造业", 0.6)]
+        assert result["stress"] is None
 
     def test_disclaimer_present(self):
         """输出包含 LAW 6 免责声明."""
@@ -271,4 +302,15 @@ class TestLoadHoldingsPositionFields:
         p = tmp_path / "holdings.json"
         p.write_text(json.dumps({"symbol": "600176"}), encoding="utf-8")
         with pytest.raises(ValueError, match="须为"):
+            pr.load_holdings(p)
+
+    def test_load_holdings_rejects_non_dict_rows(self, tmp_path):
+        """review #12：非 dict 行恢复 ValueError（pass-through 仅限字段宽容，不涵盖
+        行项形态——消费端逐行 .get() 会对非 dict 行 AttributeError）。"""
+        import json
+        from lib import portfolio_review as pr
+
+        p = tmp_path / "holdings.json"
+        p.write_text(json.dumps([{"symbol": "600176"}, ["oops"]]), encoding="utf-8")
+        with pytest.raises(ValueError, match="须为 dict"):
             pr.load_holdings(p)

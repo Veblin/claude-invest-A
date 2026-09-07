@@ -109,19 +109,17 @@ def _a_share_symbol_ok(sym: str) -> bool:
 
 
 def _validate_p1_fields(h: dict) -> tuple[dict, str | None]:
-    """P-1 字段语义校验（单行）。返回 (row_input 修正, error_note|None)。
+    """P-1 字段语义校验（单行）。返回 (h, error_note|None) —— h 原样返回（本函数
+    不做字段修正，修正语义在调用侧），error_note 为校验结论（None=通过）。
 
     校验失败 → 返回错误 note（调用方整行降级），**不 raise**——review2 A-4 定稿：
     load_holdings 已宽容，P-1 语义校验在此逐行执行，坏行降级不阻塞整表。
     """
-    import math as _math
-
-    sym = str(h.get("symbol", "")).strip()
     cost = h.get("cost")
     if cost is not None:
         if isinstance(cost, bool) or not isinstance(cost, (int, float)):
             return h, f"cost 非数值（{type(cost).__name__}），本行位置状态不可判"
-        if _math.isnan(cost) or _math.isinf(cost) or cost <= 0:
+        if math.isnan(cost) or math.isinf(cost) or cost <= 0:
             return h, "cost 非正数/NaN/Infinity，本行位置状态不可判"
     bd = h.get("buy_date")
     if bd is not None:
@@ -187,17 +185,14 @@ def build_position_rows_from_holdings(holdings: list[dict], today: str | None = 
             note_pre = "非 A 股 6 位代码（如港股），本表仅确认持仓事实，档位以相应市场工具为准"
         price, pdate = price_by_sym.get(sym, (None, None))
         if note_pre:
-            # 校验失败/非 A 股行：绕过 build_position_row（字符串 cost 等会 TypeError），
-            # 直接构造降级行（band unknown，note 说明原因）
-            row = {
-                "symbol": sym,
-                "name": h.get("name"),
-                "weight": h.get("weight"),
-                "pnl_pct": None,
-                "band": "unknown",
-                "holding_days": None,
-                "note": note_pre,
-            }
+            # 校验失败/非 A 股行：绕过 build_position_row 的常规计算（字符串 cost 等
+            # 会 TypeError），以 None 输入构造同构降级行（band unknown），note 置校验结论
+            # ——与 build_position_row 输出 schema 单源，避免平行字面量漂移
+            row = build_position_row(
+                symbol=sym, price=None, cost=None, buy_date=None,
+                today=today, name=h.get("name"), weight=h.get("weight"),
+            )
+            row["note"] = note_pre
             rows.append(row)
             continue
         row = build_position_row(

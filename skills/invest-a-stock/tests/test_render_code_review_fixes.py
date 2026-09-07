@@ -293,3 +293,27 @@ class TestRiskImpliedMcUsesLatestRow:
         }
         text = _section_bull_bear({}, "600176", dims, {}, {"signals": []})
         assert "当前市值 980.00亿" in text
+
+
+class TestBullBearDefaultRAnnotation:
+    """review #13：模块 5 在 r 为默认假设 2.5%（FRED/akshare 不可得）时须标注
+    [推测，待验证] 且方向性对比加盖警示——与模块 4 D-③（_v3.py:3487-3491）口径一致。"""
+
+    def test_default_r_annotated_in_5c_and_5d(self):
+        from lib.render_risk import _section_bull_bear
+
+        dims = {
+            "valuation": {"data": [
+                {"trade_date": "2024-01-01", "pe_ttm": 12.0, "total_mv": 300.0},
+                {"trade_date": "2025-01-01", "pe_ttm": 20.0, "total_mv": 396.0},
+            ]},
+            "financials": {"data": [
+                {"end_date": "20231231", "revenue": 1.5e9, "net_profit": 1.5e8},
+                {"end_date": "20241231", "revenue": 1.7e9, "net_profit": 1.8e8},
+                {"end_date": "20251231", "revenue": 2.0e9, "net_profit": 2.0e8},
+            ]},
+        }
+        # market_structure={} → erp.dgs10 不可得 → risk_free=0.025 默认假设路径
+        text = _section_bull_bear({}, "600176", dims, {}, {"signals": []})
+        assert "[推测，待验证" in text
+        assert "方向仅供参考" in text
